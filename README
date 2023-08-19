@@ -1,0 +1,13 @@
+forks, patches, bikeshedding.
+
+example usage:
+
+; ramfs -u
+; unionfs -m /sys -c /tmp /usr/qwx/p/fork/sys /tmp /sys
+; cd /tmp
+; mkdir -p `{cd /sys; walk -d src include}
+; cd /sys/src
+; mk nuke
+; mk install
+
+unionfs: http://shithub.us/kvik/unionfs/HEAD/f.html
