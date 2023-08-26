@@ -77,8 +77,6 @@ struct Playlist
 	int rawsz;
 };
 
-int mainstacksize = 65536;
-
 static int debug;
 static int audio = -1;
 static int volume, rg;
@@ -102,7 +100,6 @@ static char *cols = "AatD";
 static int colspath;
 static int *shuffle;
 static int repeatone;
-static int stopafter;
 static Rectangle seekbar;
 static int seekmx, newseekmx = -1;
 static double seekoff; /* ms */
@@ -153,13 +150,13 @@ chvolume(int d)
 {
 	int f, x, ox, want, try;
 	char *s, *e;
-	Biobuf b;
+	Biobufhdr b;
+	uchar buf[1024];
 	char *n;
 
 	if((f = open("/dev/volume", ORDWR|OCEXEC)) < 0)
 		return;
-	Binit(&b, f, OREAD);
-
+	Binits(&b, f, OREAD, buf, sizeof(buf));
 	want = x = -1;
 	ox = 0;
 	for(try = 0; try < 10; try++){
@@ -182,9 +179,7 @@ chvolume(int d)
 		while(Brdline(&b, '\n') != nil);
 		Bseek(&b, 0, 0);
 	}
-
 	volume = CLAMP(ox, 0, 100);
-
 	Bterm(&b);
 	close(f);
 }
@@ -288,9 +283,9 @@ redraw_(int full)
 	/* seekbar playback/duration text */
 	i = snprint(tmp, sizeof(tmp), "%s%s%s%s",
 		rg ? (rg == Rgalbum ? "ᴬ" : "ᵀ") : "",
-		stopafter ? "ⁿ" : repeatone ? "¹" : "",
+		repeatone ? "¹" : "",
 		shuffle != nil ? "∫" : "",
-		(rg || stopafter || repeatone || shuffle != nil) ? " " : ""
+		(rg || repeatone || shuffle != nil) ? " " : ""
 	);
 	msec = 0;
 	dur = 0;
@@ -796,10 +791,7 @@ restart:
 	while(1){
 		n = ioread(io, p[1], buf, Relbufsz);
 		if(n <= 0){
-			if(stopafter){
-				audiooff();
-				goto stop;
-			}else if(repeatone){
+			if(repeatone){
 				c = Cseekrel;
 				boffset = 0;
 			}
@@ -1620,10 +1612,6 @@ playcur:
 				break;
 			case 'r':
 				repeatone ^= 1;
-				redraw(0);
-				break;
-			case 'x':
-				stopafter ^= 1;
 				redraw(0);
 				break;
 			case 'c':
