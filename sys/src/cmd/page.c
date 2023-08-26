@@ -63,7 +63,7 @@ char pagespool[] = "/tmp/pagespool.";
 
 enum {
 	NPROC = 8,
-	NBUF = 8*1024,
+	NBUF = IOUNIT,
 	NPATH = 1024,
 };
 
