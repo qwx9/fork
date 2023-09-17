@@ -1,7 +1,0 @@
-</$objtype/mkfile
-
-TARG=qfrom
-OFILES=qfrom.$O
-
-</sys/src/cmd/mkone
-<../mkupas

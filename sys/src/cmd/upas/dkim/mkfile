@@ -1,7 +1,0 @@
-</$objtype/mkfile
-
-TARG=dkim
-OFILES=dkim.$O
-
-</sys/src/cmd/mkone
-<../mkupas

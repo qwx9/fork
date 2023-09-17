@@ -117,11 +117,11 @@ ulong	cachetarg = Maxcache;
 int	nocertcheck; /* ignore unrecognized certs. Still logged */
 Mailbox	*mbl;
 
-static	int	messagesize = 8*1024 + IOHDRSZ;
+static	int	messagesize = IOUNIT + IOHDRSZ;
 static	int	mfd[2];
 static	char	hbuf[32*1024];
-static	uchar	mbuf[16*1024 + IOHDRSZ];
-static	uchar	mdata[16*1024 + IOHDRSZ];
+static	uchar	mbuf[IOUNIT];
+static	uchar	mdata[IOUNIT + IOHDRSZ];
 static	ulong	path;		/* incremented for each new file */
 static	Hash	*htab[2053];
 static	Fcall	rhdr;
