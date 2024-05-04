@@ -173,6 +173,7 @@ struct Window
 	uchar		deleted;
 	uchar		mouseopen;
 	uchar		kbdopen;
+	uchar		keyup;
 	uchar		winnameread;
 	char			*label;
 	char			*dir;
@@ -322,16 +323,10 @@ int		snarffd;
 int		gotscreen;
 int		servekbd;
 
-enum{
-	Tapon = 'b',
-	Tapoff = 'e',
-	Tapfocus = 'z',
-};
-Channel *ctltap;	/* open/close */
-Channel *resptap;	/* open/close err */
-Channel	*fromtap;	/* input from kbd tap program to window */
+Channel *opentap;	/* open fromtap or totap */
+Channel *closetap;	/* close fromtap or totap */
+Channel	*fromtap;	/* keyboard output from the tap program */
 Channel *totap;		/* our keyboard input to tap program */
-Channel *wintap;	/* tell the tapthread which Window to send to */
 
 Window	*input;
 QLock	all;			/* BUG */

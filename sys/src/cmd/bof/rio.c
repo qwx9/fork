@@ -193,12 +193,9 @@ threadmain(int argc, char *argv[])
 	kbdchan = initkbd();
 	if(kbdchan == nil)
 		error("can't find keyboard");
-	totap = chancreate(sizeof(char*), 32);
-	fromtap = chancreate(sizeof(char*), 32);
-	wintap = chancreate(sizeof(Window*), 0);
-	ctltap = chancreate(sizeof(char*), 0);
-	resptap = chancreate(sizeof(char*), 0);
-	proccreate(keyboardtap, nil, STACK);
+	opentap = chancreate(sizeof(Channel*), 0);
+	closetap = chancreate(sizeof(Channel*), 0);
+	threadcreate(keyboardtap, nil, STACK);
 
 	wscreen = allocscreen(screen, cols[Crioback], 0);
 	if(wscreen == nil)
@@ -335,8 +332,6 @@ shutdown(void *, char *msg)
 		}
 	fprint(2, "rio %d: abort: %s\n", getpid(), msg);
 	abort();
-	exits(msg);
-	return 0;
 }
 
 void
@@ -349,148 +344,73 @@ killprocs(void)
 			write(window[i]->notefd, "hangup", 6); 
 }
 
-static int tapseats[] = { [OREAD] Tapoff, [OWRITE] Tapoff };
-
-char*
-tapctlmsg(char *msg)
-{
-	int perm;
-
-	perm = msg[1];
-	switch(msg[0]){
-	case Tapoff:
-		if(perm == ORDWR)
-			tapseats[OREAD] = Tapoff, tapseats[OWRITE] = Tapoff;
-		else
-			tapseats[perm] = Tapoff;
-		break;
-	case Tapon:
-		switch(perm){
-		case ORDWR:
-			if(tapseats[OREAD] != Tapoff || tapseats[OWRITE] != Tapoff)
-				return "seat taken";
-			tapseats[OREAD] = Tapon, tapseats[OWRITE] = Tapon;
-			break;
-		case OREAD: case OWRITE:
-			if(tapseats[perm] != Tapoff)
-				return "seat taken";
-			tapseats[perm] = Tapon;
-			break;
-		}
-		break;
-	}
-	return nil;
-}
-
 void
 keyboardtap(void*)
 {
-	char *s, *ctl;
-	char *e;
-	char *watched;
-	Window *w, *cur;
-	static char keys[64];
+	Window *cur = nil;
+	Channel *c;
+	char *s;
+
+	enum { Akbd, Aopen, Aclose, Awrite, NALT };
+	Alt alts[NALT+1] = {
+		[Akbd]	{.c = kbdchan, .v = &s, .op = CHANRCV},
+		[Aopen] {.c = opentap, .v = &c, .op = CHANRCV},
+		[Aclose]{.c = closetap, .v = &c, .op = CHANRCV},
+		[Awrite]{.c = nil, .v = &s, .op = CHANNOP},
+		[NALT]	{.op = CHANEND},
+	};
 
 	threadsetname("keyboardtap");
-	enum { Awin, Actl, Afrom, Adev, Ato, Ainp, Awatch, NALT };
-	static Alt alts[NALT+1];
-	/* ctl */
-	alts[Awin].c = wintap;
-	alts[Awin].v = &w;
-	alts[Awin].op = CHANRCV;
-	alts[Actl].c = ctltap;
-	alts[Actl].v = &ctl;
-	alts[Actl].op = CHANRCV;
-	/* kbd input */
-	alts[Afrom].c = fromtap;
-	alts[Afrom].v = &s;
-	alts[Afrom].op = CHANRCV;
-	alts[Adev].c = kbdchan;
-	alts[Adev].v = &s;
-	alts[Adev].op = CHANRCV;
-	/* kbd output */
-	alts[Ato].c = totap;
-	alts[Ato].v = &s;
-	alts[Ato].op = CHANNOP;
-	alts[Ainp].c = nil;
-	alts[Ainp].v = &s;
-	alts[Ainp].op = CHANNOP;
-	alts[Awatch].c = totap;
-	alts[Awatch].v = &watched;
-	alts[Awatch].op = CHANNOP;
-	alts[NALT].op = CHANEND;
 
-	cur = nil;
-	watched = nil;
-	keys[0] = 0;
-	for(;;)
+	for(;;){
 		switch(alt(alts)){
-		case Awin:
-			cur = w;
-			if(cur != nil){
-				alts[Ainp].c = cur->ck;
-				if(tapseats[OREAD] != Tapoff){	
-					if(alts[Awatch].op == CHANSND)
-						free(watched);
-					watched = smprint("%c%d", Tapfocus, cur->id);
-					alts[Awatch].op = CHANSND;
+		case Akbd:
+			if(*s == 'k' || *s == 'K')
+				shiftdown = utfrune(s+1, Kshift) != nil;
+			if(totap == nil)
+				goto Bypass;
+			if(input != nil && input != cur){	/* context change */
+				char *z = smprint("z%d", input->id);
+				if(nbsendp(totap, z) != 1){
+					free(z);
+					goto Bypass;
 				}
 			}
-			if(alts[Ainp].op != CHANNOP || alts[Ato].op != CHANNOP)
-				free(s);
-			if(cur == nil)
-				goto Reset;
-			s = smprint("K%s", keys);
-			alts[Ainp].op = CHANSND;
-			alts[Ato].op = CHANNOP;
+			cur = input;
+			if(nbsendp(totap, s) != 1)
+				goto Bypass;
 			break;
-		case Actl:
-			e = tapctlmsg(ctl);
-			sendp(resptap, e);
-			if(e != nil || *ctl != Tapoff){
-				free(ctl);
+		case Aopen:
+			if(c == fromtap){
+				alts[Awrite].c = c;
+				alts[Awrite].op = CHANRCV;
+			}
+			break;
+		case Aclose:
+			if(c == fromtap){
+				fromtap = nil;
+				alts[Awrite].c = nil;
+				alts[Awrite].op = CHANNOP;
+			}
+			if(c == totap)
+				totap = nil;
+			chanfree(c);
+			break;
+		case Awrite:
+			if(input != cur){
+				free(s);
 				break;
 			}
-			free(ctl);
-			goto Reset;
-		case Afrom:
+		Bypass:
+			cur = input;
 			if(cur == nil){
 				free(s);
 				break;
 			}
-			alts[Afrom].op = CHANNOP;
-			alts[Adev].op = CHANNOP;
-			alts[Ato].op = CHANNOP;
-			alts[Ainp].op = CHANSND;
-			break;
-		case Adev:
-			if(s[0] == 'k' || s[0] == 'K')
-				strcpy(keys, s+1);
-			if(tapseats[OWRITE] == Tapoff && cur == nil){
-				free(s);
-				break;
-			}
-			alts[Afrom].op = CHANNOP;
-			alts[Adev].op = CHANNOP;
-			if(tapseats[OWRITE] == Tapoff)
-				alts[Ainp].op = CHANSND;
-			else
-				alts[Ato].op = CHANSND;
-			break;
-		case Awatch:
-			alts[Awatch].op = CHANNOP;
-			break;
-		case Ainp:
-			if(*s == 'k' || *s == 'K')
-				shiftdown = utfrune(s+1, Kshift) != nil;
-		case Ato:
-		Reset:
-			alts[Ainp].op = CHANNOP;
-			alts[Ato].op = CHANNOP;
-			alts[Afrom].op = CHANRCV;
-			alts[Adev].op = CHANRCV;
+			sendp(cur->ck, s);
 			break;
 		}
+	}
 }
 
 int

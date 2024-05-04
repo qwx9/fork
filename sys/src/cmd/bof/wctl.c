@@ -149,11 +149,12 @@ newrect(void)
 	int minx, miny, dx, dy;
 
 	dx = max(Dx(screen->r) / 4, 400);
-	dy = min(Dy(screen->r) / 3, Dy(screen->r) - 1.5*Borderwidth);
+	dy = Dy(screen->r) - 1.5*Borderwidth;
 	minx = 16*i;
 	miny = 16*i;
 	i++;
 	i %= 10;
+
 	return Rect(minx, miny, minx+dx, miny+dy);
 }
 
