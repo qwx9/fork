@@ -52,7 +52,6 @@ ulong imemsize;
 
 enum{
 	Cground,
-	Cpaper,
 	Cframe,
 	Ctext,
 	Ncols,
@@ -1239,7 +1238,7 @@ drawpage(Page *p)
 
 	if((i = p->image) != nil){
 		r = rectaddpt(Rpt(ZP, pagesize(p)), addpt(pos, screen->r.min));
-		zoomdraw(screen, r, ZR, cols[Cpaper], i, i->r.min, zoom);
+		zoomdraw(screen, r, ZR, display->white, i, i->r.min, zoom);
 	} else {
 		r = Rpt(ZP, stringsize(font, p->name));
 		r = rectaddpt(r, addpt(subpt(divpt(subpt(screen->r.max, screen->r.min), 2),
@@ -1266,7 +1265,7 @@ translate(Page *p, Point d)
 		draw(screen, rectaddpt(r, d), screen, nil, r.min);
 	else
 		r = ZR;
-	zoomdraw(screen, nr, rectaddpt(r, d), cols[Cpaper], i, i->r.min, zoom);
+	zoomdraw(screen, nr, rectaddpt(r, d), display->white, i, i->r.min, zoom);
 	drawframe(nr);
 }
 
@@ -1805,7 +1804,6 @@ main(int argc, char *argv[])
 		sysfatal("initdraw: %r");
 	Theme th[nelem(cols)] = {
 		[Cground] { "back",	0x777777FF },
-		[Cpaper] { "paper",	DWhite },
 		[Cframe] { "border",	DBlack },
 		[Ctext]	{ "text",	DBlack },
 	};
