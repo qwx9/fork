@@ -412,6 +412,8 @@ emergencywarp(void)
 		fprint(fd, "halt\n");
 		close(fd);
 	}
+	fprint(2, "emergency warp!\n");
+	sleep(1000);
 	reboot();
 }
 
