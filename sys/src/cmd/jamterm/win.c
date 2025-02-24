@@ -182,8 +182,8 @@ promptrect(Rectangle *rp, Flayer *l, int new)
 		*rp = r;
 		return 0;
 	/* around the minimum for libframe to not choke */
-	}else if(Dx(r) < 2 * stringwidth(font, "0") + 2 * FLMARGIN
-	|| Dy(r) < font->height + 2 * FLMARGIN){
+	}else if(Dx(r) < 4 * stringwidth(font, "0") + 2 * FLMARGIN
+	|| Dy(r) < font->height + 4 * FLMARGIN){
 		p = r.min;	/* mousep->xy == r.max */
 		if(!ptinrect(p, screen->r))
 			return 0;

@@ -38,6 +38,8 @@ threadmain(int argc, char *argv[])
 	Flayer *nwhich;
 	ulong p;
 
+	rfork(RFENVG|RFNAMEG);
+
 	getscreen(argc, argv);
 	iconinit();
 	initio();
@@ -639,7 +641,7 @@ type(Flayer *l, int res)	/* what a bloody mess this is */
 		scrorigin(l, 1, Dy(l->scroll)/l->f.font->height);
 	}else if(c == Kright){
 		flushtyping(0);
-		a0 = l->p0;
+		a0 = l->p1;
 		if(a0 < t->rasp.nrunes)
 			a0++;
 		flsetselect(l, a0, a0);
