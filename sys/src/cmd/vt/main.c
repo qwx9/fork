@@ -349,7 +349,7 @@ threadmain(int argc, char **argv)
 		[BACK]	{ "back",	DBlack },
 		[TEXT]	{ "text",	DWhite },
 		[HIGH]	{ "high",	0xCCCCCCFF },
-		[HTEXT]	{ "back",	0x333333FF },
+		[HTEXT]	{ "htext",	0x333333FF },
 	};
 	readtheme(th, nelem(th), nil);
 	if(reverse)
