@@ -11,3 +11,50 @@ example usage:
 ; mk install
 
 unionfs: http://shithub.us/kvik/unionfs/HEAD/f.html
+
+this repo contains jam, a fork of ham, a fork of sam, and bof, a fork of rio.
+jamterm mostly changes how windowing behaves, reducing the amount of clicking and
+adding window snapping to existing geometry for more automatic windowing. it also
+modifies the role of sam.err to make it usable as an output window one can plumb
+from when running commands, and some other misc changes.
+bof only has some wip changes for editing from within rio, nothing else.
+
+libdraw has been changed in a horrible, horrible way to enable theming, and all
+graphical programs using allocimage(2) require this version.  make sure this
+repo's include is bound over /sys/include when building, and make sure you nuke
+the modified libdraw from orbit once done.  the changes allow programs to read
+values in /dev/theme if available and set up default colors otherwise.  /dev/theme
+can be anything and come from anywhere so long as the format is respected, for
+instance:
+
+	rioback	000000
+	back	000000
+	high	ffc900
+	border	363636
+	text	ffffff
+	htext	020202
+	title	e4e4e4
+	ltitle	ffffff
+	hold	ffad00
+	lhold	dcbc72
+	palehold	ccbd9e
+	paletext	5c5d5d
+	size	ff0000
+	menubar	797979
+	menuback	000000
+	menuhigh	9c9c9c
+	menubord	dedede
+	menutext	ffffff
+	menuhtext	000000
+	paper	ff00ff
+	white	ffffff
+
+this is not to be condoned.
+
+other notes:
+
+- doom networking example:
+
+; window doom -z d2 -altdeath -nomonsters -warp7 -net $sys!667 $sys!668
+; window doom -z d2 -pn 1 -srv 667 -net $sys!666 $sys!668
+; window doom -z d2 -pn 2 -srv 668 -net $sys!666 $sys!667
