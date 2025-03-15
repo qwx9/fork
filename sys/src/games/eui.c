@@ -68,20 +68,24 @@ joyproc(void *)
 	Kfn *kp;
 
 	j = 1;
-
 	for(;;){
 		n = read(0, buf, sizeof(buf) - 1);
 		if(n <= 0)
 			sysfatal("read: %r");
 		buf[n] = 0;
 		n = getfields(buf, down, nelem(down), 1, " ");
+		if(n <= 0)
+			continue;
 		k = 0;
 		for(n--; n >= 0; n--){
 			s = down[n];
-			if(strcmp(s, "joy1") == 0)
-				j = 1;
-			else if(strcmp(s, "joy2") == 0)
-				j = 2;
+			if(strncmp(s, "joy", 3) == 0){
+				if(strcmp(s, "2 ") == 0)
+					j = 2;
+				else
+					j = 1;
+				continue;
+			}
 			for(kp=kkn.n; kp!=nil; kp=kp->n){
 				if(strcmp(kp->joyk, s) == 0)
 					k |= kp->k;
