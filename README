@@ -2,13 +2,14 @@ forks, patches, bikeshedding.
 
 example usage:
 
-; ramfs -u
-; unionfs -m /sys -c /tmp /usr/qwx/p/fork/sys /tmp /sys
-; cd /tmp
-; mkdir -p `{cd /sys; walk -d src include}
+; unionfs /usr/qwx/p/fork/sys /sys
+; ramfs -u -m /mnt/build
+; clone -xTp 8:8 /mnt/union/^(include src) /mnt/build/
+; unmount /mnt/union
+; bind /mnt/build/include /sys/include
+; bind -c /mnt/build/src /sys/src
 ; cd /sys/src
-; mk nuke
-; mk install
+; for(i in amd64 386 arm) objtype=$i { mk nuke; mk safeinstall } | dd >/dev/null
 
 unionfs: http://shithub.us/kvik/unionfs/HEAD/f.html
 
