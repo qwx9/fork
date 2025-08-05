@@ -9,6 +9,8 @@ enum{
 
 char *fetchbranch;
 char *upstream = "origin";
+Hash heads[64];
+int nheads;
 int listonly;
 
 /*
@@ -139,13 +141,19 @@ mkoutpath(char *path)
 }
 
 int
+prefixed(char *s, char *pfx)
+{
+	return strncmp(s, pfx, strlen(pfx)) == 0;
+}
+
+int
 branchmatch(char *br, char *pat)
 {
 	char name[128];
 
-	if(strstr(pat, "refs/heads") == pat)
+	if(prefixed(pat, "refs/heads"))
 		snprint(name, sizeof(name), "%s", pat);
-	else if(strstr(pat, "heads"))
+	else if(prefixed(pat, "heads/"))
 		snprint(name, sizeof(name), "refs/%s", pat);
 	else
 		snprint(name, sizeof(name), "refs/heads/%s", pat);
@@ -269,6 +277,10 @@ fetchpack(Conn *c)
 			sysfatal("remote side sent invalid ref: %s", sp[1]);
 		if(fetchbranch && !branchmatch(sp[1], fetchbranch))
 			continue;
+		else if(strcmp(sp[1], "HEAD") != 0
+		&& !prefixed(sp[1], "refs/heads/")
+		&& !prefixed(sp[1], "refs/tags/"))
+			continue;
 		if(refsz == nref + 1){
 			refsz *= 2;
 			have = earealloc(have, refsz, sizeof(have[0]));
@@ -296,7 +308,7 @@ fetchpack(Conn *c)
 			continue;
 		for(j = 0; j < i; j++)
 			if(hasheq(&want[i], &want[j]))
-				goto Next;
+				continue;
 		if((o = readobject(want[i])) != nil){
 			unref(o);
 			continue;
@@ -305,7 +317,6 @@ fetchpack(Conn *c)
 			sysfatal("could not send want for %H", want[i]);
 		caps[0] = 0;
 		req = 1;
-Next:		continue;
 	}
 	flushpkt(c);
 
@@ -322,6 +333,22 @@ Next:		continue;
 		if(hasheq(&have[i], &Zhash) || oshas(&hadobj, have[i]))
 			continue;
 		if((o = readobject(have[i])) == nil)
+			sysfatal("missing exected object: %H", have[i]);
+		if(fmtpkt(c, "have %H", o->hash) == -1)
+			sysfatal("write: %r");
+		enqueueparent(&haveq, o);
+		osadd(&hadobj, o);
+		unref(o);
+		nsent++;
+	}
+	/*
+	 * The other branches we have probably make sense to send,
+	 * since often we'll be pulling a new branch with objects
+	 * that we already have; it's not entirely clear what we
+	 * want to do here.
+	 */
+	for(i = 0; i < nheads; i++){
+		if((o = readobject(heads[i])) == nil)
 			sysfatal("missing exected object: %H", have[i]);
 		if(fmtpkt(c, "have %H", o->hash) == -1)
 			sysfatal("write: %r");
@@ -466,7 +493,14 @@ main(int argc, char **argv)
 	case 'u':	upstream=EARGF(usage());	break;
 	case 'd':	chattygit++;			break;
 	case 'l':	listonly++;			break;
-	default:	usage();			break;
+	case 'h':
+		if(nheads < nelem(heads))
+			if(hparse(&heads[nheads], EARGF(usage())) == 0)
+				nheads++;
+		break;
+	default:
+		usage();
+		break;
 	}ARGEND;
 
 	gitinit();
