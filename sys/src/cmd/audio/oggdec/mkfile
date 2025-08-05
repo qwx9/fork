@@ -1,0 +1,10 @@
+</$objtype/mkfile
+<../config
+
+OFILES=oggdec.$O
+TARG=oggdec
+
+</sys/src/cmd/mkone
+
+CC=pcc
+CFLAGS=$CFLAGS -c -I../libvorbis -I../libogg -D_POSIX_SOURCE

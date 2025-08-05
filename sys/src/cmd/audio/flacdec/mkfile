@@ -1,0 +1,10 @@
+</$objtype/mkfile
+<../config
+
+TARG=flacdec
+OFILES=flacdec.$O ../libFLAC/libFLAC.a$O
+
+</sys/src/cmd/mkone
+
+CC=pcc
+CFLAGS=$CFLAGS -c -I. -I../libFLAC -I../libFLAC/FLAC -D_POSIX_SOURCE -D_BSD_EXTENSION -DPlan9
