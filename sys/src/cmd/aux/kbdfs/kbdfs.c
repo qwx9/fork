@@ -167,7 +167,7 @@ Rune ascii[Nlayers][Nscan] = {
 	[0x18]	'o',	'p',	'[',	']',	'\n',	Kctl,	'a',	's',
 	[0x20]	'd',	'f',	'g',	'h',	'j',	'k',	'l',	';',
 	[0x28]	'\'',	'`',	Kshift,	'\\',	'z',	'x',	'c',	'v',
-	[0x30]	'b',	'n',	'm',	',',	'.',	'/',	Kshift,	'*',
+	[0x30]	'b',	'n',	'm',	',',	'.',	'/',	Krshift,'*',
 	[0x38]	Kalt,	' ',	Kctl,	KF|1,	KF|2,	KF|3,	KF|4,	KF|5,
 	[0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Knum,	Kscroll,'7',
 	[0x48]	'8',	'9',	'-',	'4',	'5',	'6',	'+',	'1',
@@ -187,7 +187,7 @@ Rune ascii[Nlayers][Nscan] = {
 	[0x18]	'O',	'P',	'{',	'}',	'\n',	Kctl,	'A',	'S',
 	[0x20]	'D',	'F',	'G',	'H',	'J',	'K',	'L',	':',
 	[0x28]	'"',	'~',	Kshift,	'|',	'Z',	'X',	'C',	'V',
-	[0x30]	'B',	'N',	'M',	'<',	'>',	'?',	Kshift,	'*',
+	[0x30]	'B',	'N',	'M',	'<',	'>',	'?',	Krshift,'*',
 	[0x38]	Kalt,	' ',	Kctl,	KF|1,	KF|2,	KF|3,	KF|4,	KF|5,
 	[0x40]	KF|6,	KF|7,	KF|8,	KF|9,	KF|10,	Knum,	Kscroll,'7',
 	[0x48]	'8',	'9',	'-',	'4',	'5',	'6',	'+',	'1',
@@ -204,7 +204,7 @@ Rune ascii[Nlayers][Nscan] = {
 	[0x00]	0,	0,	0,	0,	0,	0,	0,	0,
 	[0x08]	0,	0,	0,	0,	0,	0,	0,	0,
 	[0x10]	Ksbwd,	Kbrtdn,	0,	0,	0,	0,	0,	0,
-	[0x18]	0,	Ksfwd,	Kbrtup,	0,	'\n',	Kctl,	0,	0,
+	[0x18]	0,	Ksfwd,	Kbrtup,	0,	'\n',	Krctl,	0,	0,
 	[0x20]	Kmute,	0,	Kpause,	0,	0,	0,	0,	0,
 	[0x28]	0,	0,	0,	0,	0,	0,	Kvoldn,	0,
 	[0x30]	Kvolup,	0,	0,	0,	0,	'/',	0,	Kprint,
@@ -224,7 +224,7 @@ Rune ascii[Nlayers][Nscan] = {
 	[0x00]	0,	0,	0,	0,	0,	0,	0,	0,
 	[0x08]	0,	0,	0,	0,	0,	0,	0,	0,
 	[0x10]	0,	0,	0,	0,	0,	0,	0,	0,
-	[0x18]	0,	0,	0,	0,	0,	0,	0,	0,
+	[0x18]	0,	0,	0,	0,	0,	Krctl,	0,	0,
 	[0x20]	0,	0,	0,	0,	0,	0,	0,	0,
 	[0x28]	0,	0,	0,	0,	0,	0,	0,	0,
 	[0x30]	0,	0,	0,	0,	0,	0,	0,	0,
@@ -244,7 +244,7 @@ Rune ascii[Nlayers][Nscan] = {
 	[0x00]	0,	0,	0,	0,	0,	0,	0,	0,
 	[0x08]	0,	0,	0,	0,	0,	0,	0,	0,
 	[0x10]	0,	0,	0,	0,	0,	0,	0,	0,
-	[0x18]	0,	0,	0,	0,	0,	0,	0,	0,
+	[0x18]	0,	0,	0,	0,	0,	Krctl,	0,	0,
 	[0x20]	0,	0,	0,	0,	0,	0,	0,	0,
 	[0x28]	0,	0,	0,	0,	0,	0,	0,	0,
 	[0x30]	0,	0,	0,	0,	0,	0,	0,	0,
@@ -397,27 +397,6 @@ reboot(void)
 }
 
 void
-emergencywarp(void)
-{
-	int fd;
-
-	if(debug)
-		return;
-
-	if(access("/srv/cwfs.cmd", AEXIST) == 0 && (fd = eopen("/srv/cwfs.cmd", OWRITE)) >= 0){
-		fprint(fd, "halt\n");
-		close(fd);
-	}
-	if(access("/srv/hjfs.cmd", AEXIST) == 0 && (fd = eopen("/srv/hjfs.cmd", OWRITE)) >= 0){
-		fprint(fd, "halt\n");
-		close(fd);
-	}
-	fprint(2, "emergency warp!\n");
-	sleep(1000);
-	reboot();
-}
-
-void
 shutdown(void)
 {
 	if(notefd >= 0)
@@ -496,9 +475,6 @@ kbdputsc(Scan *scan, int c)
 	if(scan->caps && key.r<='z' && key.r>='a')
 		key.r += 'A' - 'a';
 
-	if(scan->ctl && scan->altgr && key.r == Kdel)
-		emergencywarp();
-
 	if(scan->ctl && scan->alt && key.r == Kdel){
 		if(scan->shift)
 			shiftup();
@@ -511,9 +487,11 @@ kbdputsc(Scan *scan, int c)
 
 	switch(key.r){
 	case Kshift:
+	case Krshift:
 		scan->shift = key.down;
 		break;
 	case Kctl:
+	case Krctl:
 		scan->ctl = key.down;
 		break;
 	case Kaltgr:
@@ -576,22 +554,27 @@ Nextmsg:
 			if(kbtabs[Lnone][i] == k.r || kbtabs[Lshift][i] == k.r || (i >= 16 && kbtabs[Lctl][i] == k.r)){
 				/* assign button from kbtab */
 				k.b = kbtabs[Lnone][i];
+
 				/* handle ^X forms */
 				if(k.r == kbtabs[Lnone][i] && kbtabs[Lctl][i] && !a->shift && !a->altgr && a->ctl)
 					k.r = kbtabs[Lctl][i];
+				break;
+			} else if(kbtabs[Lesc1][i] == k.r || kbtabs[Lshiftesc1][i] == k.r){
+				/* check escaped scancodes too */
+				k.b = kbtabs[Lesc1][i];
 				break;
 			}
 		}
 		/* button unknown to kbtab, use rune if no modifier keys are active */
 		if(k.b == 0 && !a->shift && !a->altgr && !a->ctl)
 			k.b = k.r;
-		if(k.r == Kshift)
+		if(k.r == Kshift || k.r == Krshift)
 			a->shift = k.down;
 		else if(k.r == Kaltgr)
 			a->altgr = k.down;
 		else if(k.r == Kmod4)
 			a->mod4 = k.down;
-		else if(k.r == Kctl)
+		else if(k.r == Kctl || k.r == Krctl)
 			a->ctl = k.down;
 		send(keychan, &k);
 		break;
@@ -784,12 +767,14 @@ nextrune(Channel *ch, Rune *r)
 		case Kcaps:
 		case Knum:
 		case Kshift:
+		case Krshift:
 		case Kaltgr:
 		case Kmod4:
 			/* ignore modifiers */
 			continue;
 
 		case Kctl:
+		case Krctl:
 		case Kalt:
 			/* composing escapes */
 			return 1;
@@ -828,7 +813,7 @@ Forward:
 			continue;
 		}
 
-		if(r == Kctl){
+		if(r == Kctl || r == Krctl){
 			ctl = 1;
 			continue;
 		}
@@ -926,7 +911,7 @@ mctlproc(void *)
 				break;
 		}
 
-		if(mctlfd >= 0 && key.r == Kshift){
+		if(mctlfd >= 0 && (key.r == Kshift || key.r == Krshift)){
 			if(key.down){
 				fprint(mctlfd, "buttonmap 132");
 			} else {

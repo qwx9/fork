@@ -399,7 +399,7 @@ process(char *s)
 		mod = 0;
 		if(utfrune(s+1, Kmod4) != nil)
 			mod |= Mmod4;
-		if(utfrune(s+1, Kctl) != nil)
+		if(utfrune(s+1, Kctl) != nil || utfrune(s+1, Krctl) != nil)
 			mod |= Mctl;
 		if(utfrune(s+1, Kshift) != nil)
 			mod |= Mshift;
