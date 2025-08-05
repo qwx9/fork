@@ -9,7 +9,6 @@
 typedef struct Kfn Kfn;
 
 u64int keys, keys2;
-Channel *keychan;
 int trace, paused;
 int savereq, loadreq;
 QLock pauselock;
@@ -68,24 +67,20 @@ joyproc(void *)
 	Kfn *kp;
 
 	j = 1;
+
 	for(;;){
 		n = read(0, buf, sizeof(buf) - 1);
 		if(n <= 0)
 			sysfatal("read: %r");
 		buf[n] = 0;
 		n = getfields(buf, down, nelem(down), 1, " ");
-		if(n <= 0)
-			continue;
 		k = 0;
 		for(n--; n >= 0; n--){
 			s = down[n];
-			if(strncmp(s, "joy", 3) == 0){
-				if(strcmp(s, "2 ") == 0)
-					j = 2;
-				else
-					j = 1;
-				continue;
-			}
+			if(strcmp(s, "joy1") == 0)
+				j = 1;
+			else if(strcmp(s, "joy2") == 0)
+				j = 2;
 			for(kp=kkn.n; kp!=nil; kp=kp->n){
 				if(strcmp(kp->joyk, s) == 0)
 					k |= kp->k;
@@ -93,11 +88,8 @@ joyproc(void *)
 		}
 		if(j == 2)
 			keys2 = k;
-		else{
+		else
 			keys = k;
-			if(keychan != nil)
-				nbsendul(keychan, k);
-		}
 	}
 }
 
@@ -180,8 +172,6 @@ keyproc(void *)
 		if((k & ax1) == ax1)
 			k &= ~ax1;
 		keys = k;
-		if(keychan != nil)
-			nbsendul(keychan, k);
 	}
 }
 
@@ -226,7 +216,7 @@ screeninit(void)
 	picr = Rpt(subpt(p, Pt(scale * vwdx/2, scale * vwdy/2)),
 		addpt(p, Pt(scale * vwdx/2, scale * vwdy/2)));
 	freeimage(fb);
-	fb = allocimage(display, Rect(0, 0, scale * vwdx, scale > 1 ? 1 : vwdy),
+	fb = eallocimage(Rect(0, 0, scale * vwdx, scale > 1 ? 1 : vwdy),
 		vwchan, scale > 1, 0);
 	free(backfb);
 	if(scale > 1)
@@ -274,99 +264,42 @@ screenproc(void*)
 		} else {
 			Rectangle r;
 			int w, x;
-			uchar *bp;
 
 			r = picr;
 			w = vwdx * vwbpp * scale;
 			while(r.min.y < picr.max.y){
-				x = 0;
-				bp = backfb;
-				while(x < vwdx){
-					switch(vwbpp){
-					case 4: {
-						u32int *d = (u32int *)bp;
-						u32int s = *(u32int *)p;
-						switch(scale){
-						case 16: *d++ = s;
-						case 15: *d++ = s;
-						case 14: *d++ = s;
-						case 13: *d++ = s;
-						case 12: *d++ = s;
-						case 11: *d++ = s;
-						case 10: *d++ = s;
-						case 9: *d++ = s;
-						case 8: *d++ = s;
-						case 7: *d++ = s;
-						case 6: *d++ = s;
-						case 5: *d++ = s;
-						case 4: *d++ = s;
-						case 3: *d++ = s;
-						case 2: *d++ = s;
-						default: *d++ = s;
-						}
-						bp = (uchar *)d;
-						break;
-					} case 2: {
-						u16int *d = (u16int *)bp;
-						u16int s = *(u16int *)p;
-						switch(scale){
-						case 16: *d++ = s;
-						case 15: *d++ = s;
-						case 14: *d++ = s;
-						case 13: *d++ = s;
-						case 12: *d++ = s;
-						case 11: *d++ = s;
-						case 10: *d++ = s;
-						case 9: *d++ = s;
-						case 8: *d++ = s;
-						case 7: *d++ = s;
-						case 6: *d++ = s;
-						case 5: *d++ = s;
-						case 4: *d++ = s;
-						case 3: *d++ = s;
-						case 2: *d++ = s;
-						default: *d++ = s;
-						}
-						bp = (uchar *)d;
-						break;
-					} case 1: {
-						uchar *d = bp;
-						uchar s = *p;
-						switch(scale){
-						case 16: *d++ = s;
-						case 15: *d++ = s;
-						case 14: *d++ = s;
-						case 13: *d++ = s;
-						case 12: *d++ = s;
-						case 11: *d++ = s;
-						case 10: *d++ = s;
-						case 9: *d++ = s;
-						case 8: *d++ = s;
-						case 7: *d++ = s;
-						case 6: *d++ = s;
-						case 5: *d++ = s;
-						case 4: *d++ = s;
-						case 3: *d++ = s;
-						case 2: *d++ = s;
-						default: *d++ = s;
-						}
-						bp = (uchar *)d;
-						break;
-					} default: {
-						int n;
-						uchar *s, *e, *d = bp;
-						for(n=scale; n>0; n--){
-							s = p;
-							e = d + vwbpp;
-							while(d < e)
-								*d++ = *s++;
-						}
-						bp = (uchar *)d;
-						break;
-					}}
-					p += vwbpp;
-					x++;
-				}
+				switch(vwbpp){
+				case 4: {
+					u32int *d = (u32int *)backfb, *e, s;
+					for(x=0; x<vwdx; x++){
+						s = *(u32int *)p;
+						p += vwbpp;
+						e = d + scale;
+						while(d < e)
+							*d++ = s;
+					}
+					break;
+				} case 2: {
+					u16int *d = (u16int *)backfb, *e, s;
+					for(x=0; x<vwdx; x++){
+						s = *(u16int *)p;
+						p += vwbpp;
+						e = d + scale;
+						while(d < e)
+							*d++ = s;
+					}
+					break;
+				} case 1: {
+					u8int *d = (u8int *)backfb, *e, s;
+					for(x=0; x<vwdx; x++){
+						s = *(u8int *)p;
+						p += vwbpp;
+						e = d + scale;
+						while(d < e)
+							*d++ = s;
+					}
+					break;
+				}}
 				loadimage(fb, fb->r, backfb, w);
 				r.max.y = r.min.y+scale;
 				draw(screen, r, fb, nil, ZP);
