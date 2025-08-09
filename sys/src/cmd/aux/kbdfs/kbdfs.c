@@ -397,6 +397,31 @@ reboot(void)
 }
 
 void
+emergencywarp(void)
+{
+	int fd;
+
+	if(debug)
+		return;
+
+	if(access("/srv/gefs.cmd", AEXIST) == 0 && (fd = eopen("/srv/gefs.cmd", OWRITE)) >= 0){
+		fprint(fd, "halt\n");
+		close(fd);
+	}
+	if(access("/srv/cwfs.cmd", AEXIST) == 0 && (fd = eopen("/srv/cwfs.cmd", OWRITE)) >= 0){
+		fprint(fd, "halt\n");
+		close(fd);
+	}
+	if(access("/srv/hjfs.cmd", AEXIST) == 0 && (fd = eopen("/srv/hjfs.cmd", OWRITE)) >= 0){
+		fprint(fd, "halt\n");
+		close(fd);
+	}
+	fprint(2, "emergency warp!\n");
+	sleep(3000);
+	reboot();
+}
+
+void
 shutdown(void)
 {
 	if(notefd >= 0)
@@ -474,6 +499,9 @@ kbdputsc(Scan *scan, int c)
 
 	if(scan->caps && key.r<='z' && key.r>='a')
 		key.r += 'A' - 'a';
+
+	if(scan->ctl && scan->altgr && key.r == Kdel)
+		emergencywarp();
 
 	if(scan->ctl && scan->alt && key.r == Kdel){
 		if(scan->shift)
