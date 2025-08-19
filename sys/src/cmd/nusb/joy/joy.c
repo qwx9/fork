@@ -292,12 +292,28 @@ joyparse(int t, int f, int g[], int l[], int, void *a)
 			else
 				p->axes[i] += (abs(v)<(g[LogiMax]*deadband))?0:v;
 			break;
-		}
-		if((l[Usage] >> 16) == 0x09){
-			m = 1ULL << (l[Usage] & 0x3f);
-			p->btns &= ~m;
-			if(v != 0)
-				p->btns |= m;
+		case 0x010039:
+			switch(v){
+			case 0: m = 0x10000; break;	/* up */
+			case 1: m = 0x90000; break;	/* up + right */
+			case 2: m = 0x80000; break;	/* right */
+			case 3: m = 0xa0000; break;	/* right + down */
+			case 4: m = 0x20000; break;	/* down */
+			case 5: m = 0x60000; break;	/* down + left */
+			case 6: m = 0x40000; break;	/* left */
+			case 7: m = 0x50000; break;	/* left + up */
+			default: m = 0; break;
+			}
+			p->btns |= m;
+			break;
+		default:
+			p->btns &= ~0xf0000;
+			if((l[Usage] >> 16) == 0x09){
+				m = 1ULL << (l[Usage] & 0x3f);
+				p->btns &= ~m;
+				if(v != 0)
+					p->btns |= m;
+			}
 		}
 	}
 	p->o += g[RepSize];
@@ -330,6 +346,8 @@ joywork(void *a)
 	lastb = 0;
 
 	nerrs = 0;
+
+	print("devid %.8ux\n", ((uint)(f->dev->usb->vid)<<16)|f->dev->usb->did);
 	for(;;){
 		if(f->ep == nil)
 			kbfatal(f, nil);
