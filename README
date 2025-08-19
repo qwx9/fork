@@ -9,9 +9,10 @@ example usage:
 ; bind /mnt/build/include /sys/include
 ; bind -c /mnt/build/src /sys/src
 ; cd /sys/src
-; for(i in amd64 386 arm) objtype=$i { mk nuke; mk safeinstall } | dd >/dev/null
+; for(i in amd64 386 arm) objtype=$i { mk nuke; mk install } | dd >/dev/null
 
 unionfs: http://shithub.us/kvik/unionfs/HEAD/f.html
+make sure to comment out the srvacquire/srvrelease calls to avoid crashes.
 
 this repo contains jam, a fork of ham, a fork of sam, and bof, a fork of rio.
 jamterm mostly changes how windowing behaves, reducing the amount of clicking and
