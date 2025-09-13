@@ -61,6 +61,8 @@ menucolors(void)
 	freeimage(high);
 	freeimage(bord);
 	freeimage(menutxt);
+	freeimage(htext);
+	freeimage(text);
 	back = display->white;
 	high = display->black;
 	bord = display->black;
@@ -131,10 +133,10 @@ menuscan(Menu *menu, int but, Mouse *m, Rectangle textr, int off, int lasti, Ima
 	int i;
 
 	paintitem(menu, textr, off, lasti, 1, save, nil);
-	flushimage(display, 1);	/* in case display->locking is set */
+	flushimage(display, 1);
 	*m = emouse();
 	while(m->buttons & (1<<(but-1))){
-		flushimage(display, 1);	/* in case display->locking is set */
+		flushimage(display, 1);
 		*m = emouse();
 		i = menusel(textr, m->xy);
 		if(i != -1 && i == lasti)
@@ -171,8 +173,7 @@ menuscrollpaint(Rectangle scrollr, int off, int nitem, int nitemdrawn)
 	if(r.max.y < r.min.y+2)
 		r.max.y = r.min.y+2;
 	border(screen, r, 1, bord, ZP);
-	if(menutxt)
-		draw(screen, insetrect(r, 1), menutxt, nil, ZP);
+	draw(screen, insetrect(r, 1), menutxt, nil, ZP);
 }
 
 int
@@ -273,7 +274,7 @@ emenuhit(int but, Mouse *m, Menu *menu)
 					menuscrollpaint(scrollr, off, nitem, nitemdrawn);
 				}
 			}
-			flushimage(display, 1);	/* in case display->locking is set */
+			flushimage(display, 1);
 			*m = emouse();
 		}
 	}

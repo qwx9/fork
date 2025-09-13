@@ -63,6 +63,8 @@ OFILES=\
 	writecolmap.$O\
 	writeimage.$O\
 	writesubfont.$O\
+	warp.$O\
+	mkwarp.$O\
 
 HFILES=\
 	/sys/include/draw.h\

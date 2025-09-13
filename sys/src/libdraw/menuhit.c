@@ -62,6 +62,8 @@ menucolors(void)
 	freeimage(high);
 	freeimage(bord);
 	freeimage(menutxt);
+	freeimage(text);
+	freeimage(htext);
 	back = display->white;
 	high = display->black;
 	bord = display->black;
@@ -168,8 +170,7 @@ menuscrollpaint(Image *m, Rectangle scrollr, int off, int nitem, int nitemdrawn)
 	if(r.max.y < r.min.y+2)
 		r.max.y = r.min.y+2;
 	border(m, r, 1, bord, ZP);
-	if(menutxt)
-		draw(m, insetrect(r, 1), menutxt, nil, ZP);
+	draw(m, insetrect(r, 1), menutxt, nil, ZP);
 }
 
 int
