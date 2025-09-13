@@ -108,8 +108,8 @@ threadmain(int argc, char *argv[])
 					current(nwhich, 1, 1);
 				if(ptinrect(mousep->xy, which->scroll) || mousep->buttons & 8)
 					scroll(which, (mousep->buttons&8) ? 4 : 1);
-				else{
-					t=(Text *)which->user1;
+				else if(ptinrect(mousep->xy, which->f.r)){
+					t = which->user1;
 					nclick = flselect(which, &p);
 					if(nclick > 0){
 						if(nclick > 1)

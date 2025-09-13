@@ -52,3 +52,5 @@ Flayer	*flwhich(Point);
 
 extern	Image	*maincols[NCOL];
 extern	Image	*cmdcols[NCOL];
+
+extern	int	sel;
