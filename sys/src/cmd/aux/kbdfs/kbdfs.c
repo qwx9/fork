@@ -205,7 +205,7 @@ Rune ascii[Nlayers][Nscan] = {
 	[0x08]	0,	0,	0,	0,	0,	0,	0,	0,
 	[0x10]	Ksbwd,	Kbrtdn,	0,	0,	0,	0,	0,	0,
 	[0x18]	0,	Ksfwd,	Kbrtup,	0,	'\n',	Krctl,	0,	0,
-	[0x20]	Kmute,	0,	Kpause,	0,	0,	0,	0,	0,
+	[0x20]	Kmute,	0,	Kpause,	0,	Kstop,	0,	0,	0,
 	[0x28]	0,	0,	0,	0,	0,	0,	Kvoldn,	0,
 	[0x30]	Kvolup,	0,	0,	0,	0,	'/',	0,	Kprint,
 	[0x38]	Kaltgr,	0,	0,	0,	0,	0,	0,	0,

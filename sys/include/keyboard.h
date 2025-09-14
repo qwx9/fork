@@ -53,6 +53,7 @@ enum {
 	Kmute=	KF|0x27,	/* (un)mute */
 	Kbrtdn=	KF|0x28,	/* brightness decrement */
 	Kbrtup=	KF|0x29,	/* brightness increment */
+	Kstop=  KF|0x32,
 
 	Krshift=	KF|0x30,
 	Krctl=	KF|0x31,
