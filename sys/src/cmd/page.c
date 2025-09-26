@@ -807,6 +807,8 @@ popenfile(Page *p)
 		werrstr("unknown image format: %s", typ);
 		goto Err1;
 	}
+	if(strcmp(typ, "text/xml") == 0 && cistrcmp(file+strlen(file)-3, "svg") != 0)
+		i--;	/* bleh */
 	p->fd = fd;
 	p->data = tab[i].data;
 	p->open = tab[i].open;
