@@ -673,6 +673,12 @@ sendfk(char *name)
 }
 
 int
+rewound(void)
+{
+	return backp != nil;
+}
+
+int
 input(void)
 {
 	static char echobuf[4*BSIZE];
