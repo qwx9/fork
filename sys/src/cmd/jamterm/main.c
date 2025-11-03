@@ -364,26 +364,6 @@ paste(Text *t, int w)
 	outTsl(Tpaste, t->tag, t->l[w].p0);
 }
 
-void
-scrorigin(Flayer *l, int but, long p0)
-{
-	Text *t=(Text *)l->user1;
-
-	if(t->tag == Untagged)
-		return;
-
-	switch(but){
-	case 1:
-		outTsll(Torigin, t->tag, l->origin, p0);
-		break;
-	case 2:
-		outTsll(Torigin, t->tag, p0, 1L);
-		break;
-	case 3:
-		horigin(t->tag,p0);
-	}
-}
-
 int
 alnum(int c)
 {
@@ -467,40 +447,25 @@ ctlu(Rasp *r, long o, long p)
 	return p>=o? p : o;
 }
 
-int
-center(Flayer *l, long a)
+void
+center(Flayer *l, long a, int n)
 {
 	Text *t;
 
 	t = l->user1;
-	if(!t->lock && (a<l->origin || l->origin+l->f.nchars<a)){
-		if(a > t->rasp.nrunes)
-			a = t->rasp.nrunes;
-		outTsll(Torigin, t->tag, a, 2L);
-		return 1;
-	}
-	return 0;
-}
+	if(t->lock || t->tag == Untagged)
+		return;
 
-int
-onethird(Flayer *l, long a)
-{
-	Text *t;
-	Rectangle s;
-	long lines;
-
-	t = l->user1;
-	if(!t->lock && (a<l->origin || l->origin+l->f.nchars<a)){
-		if(a > t->rasp.nrunes)
-			a = t->rasp.nrunes;
-		s = insetrect(l->scroll, 1);
-		lines = ((s.max.y-s.min.y)/l->f.font->height+1)/3;
-		if (lines < 2)
-			lines = 2;
-		outTsll(Torigin, t->tag, a, lines);
-		return 1;
-	}
-	return 0;
+	if(n > 0)
+		a += frcharofpt(&l->f, Pt(l->scroll.max.x, l->scroll.min.y + n * l->f.font->height));
+	if(a > t->rasp.nrunes)
+		a = t->rasp.nrunes;
+ 
+	if(n > 0)
+		/* we can center locally */
+		horigin(t->tag, a);
+	else
+		outTsll(Torigin, t->tag, a, -n+1);
 }
 
 void
@@ -559,7 +524,7 @@ type(Flayer *l, int res)	/* what a bloody mess this is */
 	Rune buf[100];
 	Rune *p = buf;
 	int c, backspacing;
-	long a, a0;
+	long a;
 	int scrollkey;
 
 	scrollkey = 0;
@@ -624,41 +589,50 @@ type(Flayer *l, int res)	/* what a bloody mess this is */
 		typeend = a;
 		if(c=='\n' || typeend-typestart>100)
 			flushtyping(0);
-		onethird(l, a);
+		if(a < l->origin || a > l->origin+l->f.nchars)
+			center(l, a, -(l->f.maxlines/3));
 	}
 	if(c==Kdown){
 		flushtyping(0);
-		scrorigin(l, 3, l->origin+frcharofpt(&l->f, Pt(l->scroll.max.x, l->scroll.min.y + l->f.font->height)));
-	}else if(c==Kup){
-		flushtyping(0);
-		scrorigin(l, 1, 2);
+		//scrorigin(l, 3, l->origin+frcharofpt(&l->f, Pt(l->scroll.max.x, l->scroll.min.y + l->f.font->height)));
+		center(l, l->origin, l->f.maxlines/3);
 	}else if(c==Kpgdown){
 		flushtyping(0);
-		scrorigin(l, 3, l->origin+frcharofpt(&l->f, Pt(l->scroll.max.x, l->scroll.max.y - l->f.font->height)));
+		//scrorigin(l, 3, l->origin+frcharofpt(&l->f, Pt(l->scroll.max.x, l->scroll.max.y - l->f.font->height)));
+		center(l, l->origin, l->f.maxlines);
 		/* backspacing immediately after outcmd(): sorry */
+	}else if(c==Kup){
+		flushtyping(0);
+		//scrorigin(l, 1, 2);
+		center(l, l->origin, -(l->f.maxlines/3));
 	}else if(c==Kpgup){
 		flushtyping(0);
-		scrorigin(l, 1, Dy(l->scroll)/l->f.font->height);
-	}else if(c == Kright){
-		flushtyping(0);
-		a0 = l->p1;
-		if(a0 < t->rasp.nrunes)
-			a0++;
-		flsetselect(l, a0, a0);
-		center(l, a0);
+		//scrorigin(l, 1, Dy(l->scroll)/l->f.font->height);
+		center(l, l->origin, -l->f.maxlines);
 	}else if(c == Kleft){
 		flushtyping(0);
-		a0 = l->p0;
-		if(a0 > 0)
-			a0--;
-		flsetselect(l, a0, a0);
-		center(l, a0);
+		if(l->p0 > 0){
+			l->p0--;
+			flsetselect(l, l->p0, l->p0);
+			if(l->p0 < l->origin || l->p0 > l->origin+l->f.nchars)
+				center(l, l->p0, 0);
+		}
+	}else if(c == Kright){
+		flushtyping(0);
+		if(l->p1 < t->rasp.nrunes){
+			l->p1++;
+			if(l->p1 == l->origin+l->f.nchars && l->p1 != t->rasp.nrunes)
+				center(l, l->origin, 1);
+			else if(l->p1 < l->origin || l->p1 > l->origin+l->f.nchars)
+				center(l, l->p1, 0);
+			flsetselect(l, l->p1, l->p1);
+		}
 	}else if(c == Khome){
 		flushtyping(0);
-		center(l, 0);
+		center(l, 0, 0);
 	}else if(c == Kend){
 		flushtyping(0);
-		center(l, t->rasp.nrunes);
+		center(l, t->rasp.nrunes, -(l->f.maxlines/3));
 	}else if(c == Ksoh || c == Kenq){
 		flushtyping(1);
 		if(c == Ksoh)
@@ -720,7 +694,7 @@ type(Flayer *l, int res)	/* what a bloody mess this is */
 		flushtyping(0);
 		a = t->rasp.nrunes;
 		flsetselect(l, a, a);
-		center(l, a);
+		center(l, a, 0);
 	}else if(c == Ksyn || c == Kbel){
 		int up = 1;
 		t = &cmd;
