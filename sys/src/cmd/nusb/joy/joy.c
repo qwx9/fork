@@ -251,12 +251,19 @@ struct Joy
 {
 	int axes[Maxaxes];
 	int oldaxes[Maxaxes];
+	double normaxes[Maxaxes];
 	u64int btns;
 	
 	int	o;
 	uchar	*e;
 	uchar	p[128];
 };
+
+static double
+normalize(int val, int max, int min)
+{
+	return (double)(val - min) / (max - min);
+}
 
 static void
 joyparse(int t, int f, int g[], int l[], int, void *a)
@@ -287,8 +294,10 @@ joyparse(int t, int f, int g[], int l[], int, void *a)
 		case 0x010034:
 		case 0x010035:
 			i = l[Usage] - 0x010030;
-			if((f & (Fabs|Frel)) == Fabs)
+			if((f & (Fabs|Frel)) == Fabs){
 				p->axes[i] = (abs(v)<(g[LogiMax]*deadband))?0:v;
+				p->normaxes[i] = normalize(p->axes[i], g[LogiMax], g[LogiMin]);
+			}
 			else
 				p->axes[i] += (abs(v)<(g[LogiMax]*deadband))?0:v;
 			break;
@@ -374,7 +383,7 @@ joywork(void *a)
 		repparse(f->rep, f->rep+f->nrep, joyparse, &p);
 		for(i = 0; i < Maxaxes; i++){
 			if(p.axes[i] != p.oldaxes[i])
-				print("axis %d %d\n", i, p.axes[i]);
+				print("axis %d %d %.4f\n", i, p.axes[i], p.normaxes[i]);
 			p.oldaxes[i] = p.axes[i];
 		}
 		for(i = 0; i < 64; i++)
