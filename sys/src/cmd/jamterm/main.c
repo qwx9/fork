@@ -36,7 +36,6 @@ threadmain(int argc, char *argv[])
 	Text *t;
 	Rectangle r;
 	Flayer *nwhich;
-	ulong p;
 
 	rfork(RFENVG|RFNAMEG);
 
@@ -108,19 +107,23 @@ threadmain(int argc, char *argv[])
 					current(nwhich, 1, 1);
 				if(ptinrect(mousep->xy, which->scroll) || mousep->buttons & 8)
 					scroll(which, (mousep->buttons&8) ? 4 : 1);
-				else if(ptinrect(mousep->xy, which->f.r)){
-					t = which->user1;
-					nclick = flselect(which, &p);
-					if(nclick > 0){
-						if(nclick > 1)
-							outTsl(Ttclick, t->tag, p);
-						else
-							outTsl(Tdclick, t->tag, p);
-						t->lock++;
-					}else if(t!=&cmd)
-						outcmd();
-					if(mousep->buttons&1)
-						chord = mousep->buttons;
+				else if(nwhich && ptinrect(mousep->xy, which->f.r)){
+					if(shifted)
+						extendsel(which);
+					else{
+						t = which->user1;
+						nclick = flselect(which);
+						if(nclick > 0){
+							if(nclick > 1)
+								outTsl(Ttclick, t->tag, sel);
+							else
+								outTsl(Tdclick, t->tag, sel);
+							t->lock++;
+						}else if(t!=&cmd)
+							outcmd();
+						if(mousep->buttons&1)
+							chord = mousep->buttons;
+					}
 				}
 			}else if((mousep->buttons&2) && which){
 				if(nwhich && nwhich!=which)
@@ -142,6 +145,20 @@ threadmain(int argc, char *argv[])
 	}
 }
 
+void
+extendsel(Flayer *l)
+{
+	ulong p;
+	do{
+		p = l->origin+frcharofpt(&l->f, mousep->xy);
+		if(p < sel)
+			flsetselect(l, p, sel);
+		else
+			flsetselect(l, sel, p);
+		if(readmouse(mousectl) < 0)
+			panic("mouse");
+	}while(mousep->buttons & (1|8));
+}
 
 void
 resize(void)
@@ -499,6 +516,9 @@ int
 nontypingkey(int c)
 {
 	switch(c){
+	case Kalt:
+	case Kctl:
+	case Kshift:
 	case Kup:
 	case Kdown:
 	case Khome:
@@ -512,6 +532,7 @@ nontypingkey(int c)
 	case Kstx:
 	case Kbel:
 	case Ksyn:
+	case -1:
 		return 1;
 	}
 	return 0;
@@ -573,7 +594,7 @@ type(Flayer *l, int res)	/* what a bloody mess this is */
 					break;
 			}
 		}
-		if(c == '\n' || p >= buf+sizeof(buf)/sizeof(buf[0]))
+		if(c == '\n' || p >= buf+nelem(buf))
 			break;
 	}
 	if(p > buf){
@@ -596,7 +617,7 @@ type(Flayer *l, int res)	/* what a bloody mess this is */
 	if(c==Kdown){
 		flushtyping(0);
 		//scrorigin(l, 3, l->origin+frcharofpt(&l->f, Pt(l->scroll.max.x, l->scroll.min.y + l->f.font->height)));
-		center(l, l->origin, l->f.maxlines/3);
+		center(l, l->origin, shifted? 1: l->f.maxlines/3);
 	}else if(c==Kpgdown){
 		flushtyping(0);
 		//scrorigin(l, 3, l->origin+frcharofpt(&l->f, Pt(l->scroll.max.x, l->scroll.max.y - l->f.font->height)));
@@ -605,7 +626,7 @@ type(Flayer *l, int res)	/* what a bloody mess this is */
 	}else if(c==Kup){
 		flushtyping(0);
 		//scrorigin(l, 1, 2);
-		center(l, l->origin, -(l->f.maxlines/3));
+		center(l, l->origin, shifted? -1: -(l->f.maxlines/3));
 	}else if(c==Kpgup){
 		flushtyping(0);
 		//scrorigin(l, 1, Dy(l->scroll)/l->f.font->height);

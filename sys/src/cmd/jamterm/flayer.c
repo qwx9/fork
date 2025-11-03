@@ -23,7 +23,7 @@ void		lldelete(Flayer*);
 Image	*maincols[NCOL];
 Image	*cmdcols[NCOL];
 
-int	sel;
+ulong	sel;
 
 void
 flstart(Rectangle r)
@@ -274,7 +274,7 @@ fldelete(Flayer *l, long p0, long p1)
 }
 
 int
-flselect(Flayer *l, ulong *p)
+flselect(Flayer *l)
 {
 	static int clickcount;
 	static Point clickpt = {-10, -10};
@@ -285,7 +285,7 @@ flselect(Flayer *l, ulong *p)
 	dt = mousep->msec - l->click;
 	dx = abs(mousep->xy.x - clickpt.x);
 	dy = abs(mousep->xy.y - clickpt.y);
-	*p = sel = frcharofpt(&l->f, mousep->xy) + l->origin;
+	sel = frcharofpt(&l->f, mousep->xy) + l->origin;
 
 	l->click = mousep->msec;
 	clickpt = mousep->xy;
@@ -305,7 +305,9 @@ flsetselect(Flayer *l, long p0, long p1)
 {
 	ulong fp0, fp1;
 
-	if(l->visible==None || !flprepare(l)){
+	if(sel != l->p0 && sel != l->p1)
+		sel = p0;
+	if(!flprepare(l)){
 		l->p0 = p0, l->p1 = p1;
 		return;
 	}
