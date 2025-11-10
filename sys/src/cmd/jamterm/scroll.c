@@ -103,6 +103,7 @@ scroll(Flayer *l, int but)
 		if(but == 2){
 			o = (tot / (s.max.y - s.min.y)) * my;
 			n = 0;
+			forcenter(l, o, n);
 		}else{
 			o = l->origin;
 			n = my/l->f.font->height;
@@ -110,17 +111,16 @@ scroll(Flayer *l, int but)
 				n++;
 			if(but == 1 || but == 4)
 				n = -n;
+			forcenter(l, o, n);
 			if(!once){
-				if(but == 4 || but == 5){
-					center(l, o, n);
+				flushdisplay();
+				if(but == 4 || but == 5)
 					return;
-				}
 				once++;
 				sleep(175);
 			}
 			sleep(25);
 		}
-		forcenter(l, o, n);
 		if(nbrecv(mousectl->c, mousectl) < 0)
 			panic("mouse");
 	}while(mousectl->buttons & (1 << (but-1)));

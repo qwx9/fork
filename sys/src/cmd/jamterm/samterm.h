@@ -164,6 +164,7 @@ void	Strncpy(Rune*, Rune*, long);
 void	flushtyping(int);
 void	dumperrmsg(int, int, int, int);
 int	screensize(int*,int*);
+void	flushdisplay(void);
 Rectangle inflatepoint(Point);
 int	promptrect(Rectangle*, Flayer*, int);
 Rectangle	defaultcmdrect(void);

@@ -353,7 +353,7 @@ ekbd(void)
 		return c;
 	}
 	if(recv(kbdchan, &s) < 0){
-		fprint(2, "samterm: keybard recv error: %r\n");
+		fprint(2, "jamterm: keybard recv error: %r\n");
 		panic("kbd");
 	}
 	kbdkey(s);
