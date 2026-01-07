@@ -405,8 +405,12 @@ fetchpack(Conn *c)
 				sysfatal("read: %r");
 			if(strncmp(buf, "NAK\n", 4) == 0)
 				break;
-			if(strncmp(buf, "ACK ", 4) != 0)
-				sysfatal("bad response: '%s'", buf);
+			if(strncmp(buf, "ACK ", 4) == 0){
+				if(getfields(buf, sp, nelem(sp), 1, " \t") == 2)
+					break;
+				continue;
+			}
+			sysfatal("bad response: '%s'", buf);
 		}
 	} 
 	if(readpkt(c, buf, sizeof(buf)) == -1)
@@ -486,6 +490,7 @@ usage(void)
 void
 main(int argc, char **argv)
 {
+	char *s;
 	Conn c;
 
 	ARGBEGIN{
@@ -494,8 +499,9 @@ main(int argc, char **argv)
 	case 'd':	chattygit++;			break;
 	case 'l':	listonly++;			break;
 	case 'h':
+		s = EARGF(usage());
 		if(nheads < nelem(heads))
-			if(hparse(&heads[nheads], EARGF(usage())) == 0)
+			if(hparse(&heads[nheads], s) == 0)
 				nheads++;
 		break;
 	default:
