@@ -202,7 +202,7 @@ resizewin(Point size)
 		if(eqpt(size, dsize))
 			size.y--;
 	}
-	fprint(wctl, "resize -dx %d -dy %d\n", size.x, size.y);
+	fprint(wctl, "resample -f catmullrom -dx %d -dy %d\n", size.x, size.y);
 	close(wctl);
 }
 
@@ -876,9 +876,9 @@ openpage(Page *p)
 		if(rotate)
 			pipeline(fd, "exec rotate -r %d", rotate);
 		if(resize.x)
-			pipeline(fd, "exec resize -x %d", resize.x);
+			pipeline(fd, "exec resample -f catmullrom -x %d", resize.x);
 		else if(resize.y)
-			pipeline(fd, "exec resize -y %d", resize.y);
+			pipeline(fd, "exec resample -f catmullrom -y %d", resize.y);
 	}
 	return fd;
 }
