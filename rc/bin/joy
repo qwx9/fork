@@ -1,0 +1,78 @@
+#!/bin/rc
+# usage: nusb/joy epX.Y | joy [N]
+~ $#* 0 && *=''
+awk -safe -v 'joy='$1 '
+	function cat(f,	v){
+		getline v < f
+		return v
+	}
+	BEGIN{
+		map[1] = "b"
+		map[2] = "a"
+		map[3] = "y"
+		map[4] = "x"
+		map[5] = "l1"
+		map[6] = "r1"
+		map[7] = "control"
+		map[8] = "start"
+		map[12] = "up"
+		map[13] = "down"
+		map[14] = "left"
+		map[15] = "right"
+		if(joy != "")
+			joy = "joy" joy
+	}
+
+	/^devid/{
+		l = cat("/lib/joy/"$2)
+		if(length(l) == 0)
+			next
+		split(l, b, ",")
+		delete map
+		for(i in b){
+			if(length(b[i]) != 0)
+				map[i] = b[i]
+		}
+	}
+
+	/^(up|down)/{
+		if(!($2 in map))
+			next
+		if($1 == "down")
+			k[$2] = ""
+		else if($1 == "up")
+			delete k[$2]
+ 	}
+
+	/^axis [01]+/{
+		if($2 == 1){
+			if($4 <= 0.25)
+				a["X"] = "down"
+			else if($4 >= 0.75)
+				a["X"] = "up"
+			else
+				delete a["X"]
+		}else if($2 == 0){
+			if($4 <= 0.25)
+				a["Y"] = "left"
+			else if($4 >= 0.75)
+				a["Y"] = "right"
+			else
+				delete a["Y"]
+		}
+	}
+
+	/^(up|down|axis [01]+)/{
+		s = joy
+		for(i in k){
+			printf "%s%s", s, map[i]
+			s = " "
+		}
+		for(i in a){
+			printf "%s%s", s, a[i]
+			s = " "
+		}
+		printf "\n"
+		fflush
+	}
+'
