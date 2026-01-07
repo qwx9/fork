@@ -1,20 +1,17 @@
 #include <u.h>
 #include <libc.h>
 #include <draw.h>
-#include <event.h>
+#include <mouse.h>
 #include <keyboard.h>
 
 int
-eenter(char *ask, char *buf, int len, Mouse *m)
+genenter(char *ask, char *buf, int len, Mouse *m, void *c, int (*_input)(Mouse*, void*, Rune*), Screen *scr)
 {
 	int done, down, tick, n, h, w, l, i;
 	Image *b, *save, *backcol, *bordcol, *txtcol;
 	Point p, o, t;
 	Rectangle r, sc;
-	Event ev;
 	Rune k;
-
-	o = screen->r.min;
 
 	enum{
 		Cback,
@@ -32,12 +29,10 @@ eenter(char *ask, char *buf, int len, Mouse *m)
 	bordcol = allocimage(display, Rect(0,0,1,1), screen->chan, 1, th[Cbord].c);
 	txtcol = allocimage(display, Rect(0,0,1,1), screen->chan, 1, th[Ctext].c);
 	if(backcol == nil || bordcol == nil || txtcol == nil)
-		return -1;
+ 		return -1;
 
-	while(ecankbd())
-		ekbd();
-
-	if(m) o = m->xy;
+	sc = screen->clipr;
+	replclipr(screen, 0, screen->r);
 
 	if(buf && len > 0)
 		n = strlen(buf);
@@ -48,6 +43,7 @@ eenter(char *ask, char *buf, int len, Mouse *m)
 	}
 
 	k = -1;
+	b = nil;
 	tick = n;
 	save = nil;
 	done = down = 0;
@@ -56,10 +52,7 @@ eenter(char *ask, char *buf, int len, Mouse *m)
 	h = p.y;
 	w = p.x;
 
-	b = screen;
-	sc = b->clipr;
-	replclipr(b, 0, b->r);
-
+	o = m->xy;
 	while(!done){
 		p = stringsize(font, buf ? buf : "");
 		if(ask && ask[0]){
@@ -84,7 +77,15 @@ eenter(char *ask, char *buf, int len, Mouse *m)
 		r = rectsubpt(r, p);
 
 		r = insetrect(r, -2);
-		if(save == nil){
+		if(scr){
+			if(b == nil)
+				b = allocwindow(scr, r, Refbackup, DWhite);
+			if(b == nil)
+				scr = nil;
+		}
+		if(scr == nil && save == nil){
+			if(b == nil)
+				b = screen;
 			save = allocimage(display, r, b->chan, 0, DNofill);
 			if(save == nil){
 				n = -1;
@@ -110,29 +111,12 @@ eenter(char *ask, char *buf, int len, Mouse *m)
 		flushimage(display, 1);
 
 nodraw:
-		i = Ekeyboard;
-		if(m != nil)
-			i |= Emouse;
-
-		replclipr(b, 0, sc);
-		i = eread(i, &ev);
-
-		/* screen might have been resized */
-		if(b != screen || !eqrect(screen->clipr, sc)){
-			freeimage(save);
-			save = nil;
-		}
-		b = screen;
-		sc = b->clipr;
-		replclipr(b, 0, b->r);
-
-		switch(i){
-		default:
+		switch((*_input)(m, c, &k)){
+		case -1:
 			done = 1;
 			n = -1;
 			break;
-		case Ekeyboard:
-			k = ev.kbdc;
+		case 1:
 			if(buf == nil || k == Keof || k == '\n'){
 				done = 1;
 				break;
@@ -200,8 +184,7 @@ nodraw:
 			buf[n += l] = 0;
 			tick += l;
 			break;
-		case Emouse:
-			*m = ev.mouse;
+		case 0:
 			if(!ptinrect(m->xy, r)){
 				down = 0;
 				goto nodraw;
@@ -223,14 +206,18 @@ nodraw:
 			done = down;
 			break;
 		}
-		if(save){
+
+		if(b != screen) {
+			freeimage(b);
+			b = nil;
+		} else {
 			draw(b, save->r, save, nil, save->r.min);
 			freeimage(save);
 			save = nil;
 		}
 	}
 
-	replclipr(b, 0, sc);
+	replclipr(screen, 0, sc);
 
 	freeimage(backcol);
 	freeimage(bordcol);
@@ -238,4 +225,3 @@ nodraw:
 
 	return n;
 }
-

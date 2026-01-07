@@ -1,7 +1,7 @@
 #include <u.h>
 #include <libc.h>
 #include <draw.h>
-#include <event.h>
+#include <mouse.h>
 
 enum
 {
@@ -22,8 +22,7 @@ static	Image	*bord;
 static	Image	*text;
 static	Image	*htext;
 
-static
-void
+static void
 menucolors(void)
 {
 	enum{
@@ -53,16 +52,18 @@ menucolors(void)
 	menutxt = allocimage(display, Rect(0,0,1,1), screen->chan, 1, th[Cmtext].c);
 	if(back == nil || high == nil || bord == nil
 	|| text == nil || htext == nil || menutxt == nil)
-		goto Error;
+ 		goto Error;
 	return;
 
     Error:
+	freeimage(menutxt);
 	freeimage(back);
 	freeimage(high);
 	freeimage(bord);
 	freeimage(menutxt);
 	freeimage(htext);
 	freeimage(text);
+	menutxt = display->black;
 	back = display->white;
 	high = display->black;
 	bord = display->black;
@@ -97,9 +98,8 @@ menusel(Rectangle r, Point p)
 	return (p.y-r.min.y)/(font->height+Vspacing);
 }
 
-static
-void
-paintitem(Menu *menu, Rectangle textr, int off, int i, int highlight, Image *save, Image *restore)
+static void
+paintitem(Image *m, Menu *menu, Rectangle textr, int off, int i, int highlight, Image *save, Image *restore)
 {
 	char *item;
 	Rectangle r;
@@ -109,16 +109,16 @@ paintitem(Menu *menu, Rectangle textr, int off, int i, int highlight, Image *sav
 		return;
 	r = menurect(textr, i);
 	if(restore){
-		draw(screen, r, restore, nil, restore->r.min);
+		draw(m, r, restore, nil, restore->r.min);
 		return;
 	}
 	if(save)
-		draw(save, save->r, screen, nil, r.min);
+		draw(save, save->r, m, nil, r.min);
 	item = menu->item? menu->item[i+off] : (*menu->gen)(i+off);
 	pt.x = (textr.min.x+textr.max.x-stringwidth(font, item))/2;
 	pt.y = textr.min.y+i*(font->height+Vspacing);
-	draw(screen, r, highlight? high : back, nil, pt);
-	string(screen, pt, highlight? htext : text, pt, font, item);
+	draw(m, r, highlight? high : back, nil, pt);
+	string(m, pt, highlight? htext : text, pt, font, item);
 }
 
 /*
@@ -128,61 +128,57 @@ paintitem(Menu *menu, Rectangle textr, int off, int i, int highlight, Image *sav
  * invariant: nothing is highlighted on entry or exit.
  */
 static int
-menuscan(Menu *menu, int but, Mouse *m, Rectangle textr, int off, int lasti, Image *save)
+menuscan(Image *b, Menu *menu, int but, Mouse *m, void (*_readmouse)(Mouse*), Rectangle textr, int off, int lasti, Image *save)
 {
 	int i;
 
-	paintitem(menu, textr, off, lasti, 1, save, nil);
-	flushimage(display, 1);
-	*m = emouse();
-	while(m->buttons & (1<<(but-1))){
-		flushimage(display, 1);
-		*m = emouse();
+	paintitem(b, menu, textr, off, lasti, 1, save, nil);
+	for((*_readmouse)(m); m->buttons & (1<<(but-1)); (*_readmouse)(m)){
 		i = menusel(textr, m->xy);
 		if(i != -1 && i == lasti)
 			continue;
-		paintitem(menu, textr, off, lasti, 0, nil, save);
+		paintitem(b, menu, textr, off, lasti, 0, nil, save);
 		if(i == -1)
 			return i;
 		lasti = i;
-		paintitem(menu, textr, off, lasti, 1, save, nil);
+		paintitem(b, menu, textr, off, lasti, 1, save, nil);
 	}
 	return lasti;
 }
 
 static void
-menupaint(Menu *menu, Rectangle textr, int off, int nitemdrawn)
+menupaint(Image *b, Menu *menu, Rectangle textr, int off, int nitemdrawn)
 {
 	int i;
 
-	draw(screen, insetrect(textr, Border-Margin), back, nil, ZP);
+	draw(b, insetrect(textr, Border-Margin), back, nil, ZP);
 	for(i = 0; i<nitemdrawn; i++)
-		paintitem(menu, textr, off, i, 0, nil, nil);
+		paintitem(b, menu, textr, off, i, 0, nil, nil);
 }
 
 static void
-menuscrollpaint(Rectangle scrollr, int off, int nitem, int nitemdrawn)
+menuscrollpaint(Image *b, Rectangle scrollr, int off, int nitem, int nitemdrawn)
 {
 	Rectangle r;
 
-	draw(screen, scrollr, back, nil, ZP);
+	draw(b, scrollr, back, nil, ZP);
 	r.min.x = scrollr.min.x;
 	r.max.x = scrollr.max.x;
 	r.min.y = scrollr.min.y + (Dy(scrollr)*off)/nitem;
 	r.max.y = scrollr.min.y + (Dy(scrollr)*(off+nitemdrawn))/nitem;
 	if(r.max.y < r.min.y+2)
 		r.max.y = r.min.y+2;
-	border(screen, r, 1, bord, ZP);
-	draw(screen, insetrect(r, 1), menutxt, nil, ZP);
+	border(b, r, 1, bord, ZP);
+	draw(b, insetrect(r, 1), menutxt, nil, ZP);
 }
 
 int
-emenuhit(int but, Mouse *m, Menu *menu)
+genmenuhit(int but, Mouse *m, void (*_readmouse)(Mouse*), void (*_moveto)(Mouse*, Point), Menu *menu, Screen *scr)
 {
 	int i, nitem, nitemdrawn, maxwid, lasti, off, noff, wid, screenitem;
 	int scrolling;
 	Rectangle r, menur, sc, textr, scrollr;
-	Image *b, *save;
+	Image *b, *save, *backup;
 	Point pt;
 	char *item;
 
@@ -243,21 +239,28 @@ emenuhit(int but, Mouse *m, Menu *menu)
 	}else
 		scrollr = Rect(0, 0, 0, 0);
 
-	b = allocimage(display, menur, screen->chan, 0, 0);
-	if(b == 0)
+	if(scr){
+		b = allocwindow(scr, menur, Refbackup, DWhite);
+		if(b == nil)
+			b = screen;
+		backup = nil;
+	}else{
 		b = screen;
-	draw(b, menur, screen, nil, menur.min);
-	draw(screen, menur, back, nil, ZP);
-	border(screen, menur, Blackborder, bord, ZP);
+		backup = allocimage(display, menur, screen->chan, 0, -1);
+		if(backup)
+			draw(backup, menur, screen, nil, menur.min);
+	}
+	draw(b, menur, back, nil, ZP);
+	border(b, menur, Blackborder, bord, ZP);
 	save = allocimage(display, menurect(textr, 0), screen->chan, 0, -1);
 	r = menurect(textr, lasti);
 	if(pt.x || pt.y)
-		emoveto(divpt(addpt(r.min, r.max), 2));
-	menupaint(menu, textr, off, nitemdrawn);
+		(*_moveto)(m, divpt(addpt(r.min, r.max), 2));
+	menupaint(b, menu, textr, off, nitemdrawn);
 	if(scrolling)
-		menuscrollpaint(scrollr, off, nitem, nitemdrawn);
+		menuscrollpaint(b, scrollr, off, nitem, nitemdrawn);
 	while(m->buttons & (1<<(but-1))){
-		lasti = menuscan(menu, but, m, textr, off, lasti, save);
+		lasti = menuscan(b, menu, but, m, _readmouse, textr, off, lasti, save);
 		if(lasti >= 0)
 			break;
 		while(!ptinrect(m->xy, textr) && (m->buttons & (1<<(but-1)))){
@@ -270,19 +273,22 @@ emenuhit(int but, Mouse *m, Menu *menu)
 					noff = nitem-nitemdrawn;
 				if(noff != off){
 					off = noff;
-					menupaint(menu, textr, off, nitemdrawn);
-					menuscrollpaint(scrollr, off, nitem, nitemdrawn);
+					menupaint(b, menu, textr, off, nitemdrawn);
+					menuscrollpaint(b, scrollr, off, nitem, nitemdrawn);
 				}
 			}
-			flushimage(display, 1);
-			*m = emouse();
+			(*_readmouse)(m);
 		}
 	}
-	draw(screen, menur, b, nil, menur.min);
 	if(b != screen)
 		freeimage(b);
+	if(backup){
+		draw(screen, menur, backup, nil, menur.min);
+		freeimage(backup);
+	}
 	freeimage(save);
 	replclipr(screen, 0, sc);
+	flushimage(display, 1);
 	if(lasti >= 0){
 		menu->lasthit = lasti+off;
 		return menu->lasthit;
