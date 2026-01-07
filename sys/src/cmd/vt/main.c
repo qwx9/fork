@@ -450,7 +450,8 @@ drawscreen(void)
 			ap = onscreena(x, y);
 			cp = onscreenc(x, y);
 			c = fgcol(*ap, *cp, selected(x, y));
-			for(n = 1; x+n <= xmax && rp[n] != 0 && fgcol(ap[n], cp[n], selected(x + n, y)) == c
+			for(n = 1; x+n <= xmax && rp[n] != 0
+			&& fgcol(ap[n], cp[n], selected(x + n, y)) == c
 			&& ((ap[n] ^ *ap) & TUnderline) == 0; n++)
 				;
 			p = pt(x, y);
@@ -495,7 +496,13 @@ clear(int x1, int y1, int x2, int y2)
 {
 	int c = (attr & 0x0F00)>>8; /* bgcolor */
 
-	if(y1 < 0 || y1 > ymax || x1 < 0 || x1 > xmax || y2 <= y1 || x2 <= x1)
+	/*
+	 * We allow x to go above xmax to flag a pending wrap, however,
+	 * the cursor itself should act as though we're on the last col.
+	 */
+	if(x1 > xmax)
+		x1 = xmax;
+	if(y1 < 0 || y1 > ymax || x1 < 0 || y2 <= y1 || x2 <= x1)
 		return;
 	
 	while(y1 < y2){
@@ -530,7 +537,7 @@ newline(void)
 }
 
 int
-get_next_char(void)
+nextchar(void)
 {
 	int c = peekc;
 
@@ -1432,22 +1439,6 @@ bigscroll(void)			/* scroll up half a page */
 	y -= half;
 	if(olines)
 		olines -= half;
-}
-
-int
-number(Rune *p, int *got)
-{
-	int c, n = 0;
-
-	if(got)
-		*got = 0;
-	while ((c = get_next_char()) >= '0' && c <= '9'){
-		if(got)
-			*got = 1;
-		n = n*10 + c - '0';
-	}
-	*p = c;
-	return(n);
 }
 
 /* stubs */

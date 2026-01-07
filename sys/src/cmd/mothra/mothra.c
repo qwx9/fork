@@ -280,17 +280,6 @@ void donecurs(void){
 		esetcursor(0);
 }
 
-void drawlock(int dolock){
-	static int ref = 0;
-	if(dolock){
-		if(ref++ == 0)
-			lockdisplay(display);
-	} else {
-		if(--ref == 0)
-			unlockdisplay(display);
-	}
-}
-
 void scrollto(char *tag);
 void search(void);
 
@@ -342,7 +331,6 @@ void main(int argc, char *argv[]){
 	}
 	if(initdraw(0, 0, mothra) < 0)
 		sysfatal("initdraw: %r");
-	display->locking = 1;
 	chrwidth=stringwidth(font, "0");
 	pltabsize(chrwidth, 8*chrwidth);
 	einit(Emouse|Ekeyboard);
@@ -361,9 +349,7 @@ void main(int argc, char *argv[]){
 	bullet=allocimage(display, Rect(0,0,25, 8), screen->chan, 0, DBlack);
 	fillellipse(bullet, Pt(4,4), 3, 3, pl_txt, ZP);
 	mkpanels();
-	unlockdisplay(display);
 	eresized(0);
-	drawlock(1);
 
 	if(url && url[0])
 		geturl(url, -1, 1, 0);
@@ -383,9 +369,7 @@ void main(int argc, char *argv[]){
 			}
 		}
 
-		drawlock(0);
 		i=event(&e);
-		drawlock(1);
 
 		switch(i){
 		case Ekick:
@@ -499,7 +483,6 @@ void htmlerror(char *name, int line, char *m, ...){
 void eresized(int new){
 	Rectangle r;
 
-	drawlock(1);
 	if(new && getwindow(display, Refnone) == -1) {
 		fprint(2, "getwindow: %r\n");
 		exits("getwindow");
@@ -510,7 +493,6 @@ void eresized(int new){
 	pldraw(cmd, screen);	/* put cmd box on screen for alt display */
 	pldraw(root, screen);
 	flushimage(display, 1);
-	drawlock(0);
 }
 void *emalloc(int n){
 	void *v;
@@ -1053,11 +1035,8 @@ void geturl(char *urlname, int post, int plumb, int map){
 			w = www(i = wwwtop++);
 			if(i >= NWWW){
 				/* wait for the reader to finish the document */
-				while(!w->finished && !w->alldone){
-					drawlock(0);
+				while(!w->finished && !w->alldone)
 					sleep(10);
-					drawlock(1);
-				}
 				freetext(w->text);
 				freeform(w->form);
 				freepix(w->pix);

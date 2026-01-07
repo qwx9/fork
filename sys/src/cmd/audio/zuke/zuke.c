@@ -238,6 +238,7 @@ getcol(Meta *m, int c)
 	switch(c){
 	case Palbum: s = m->album; break;
 	case Partist: s = m->artist[0]; break;
+	case Pbasename: s = m->basename; break;
 	case Pcomposer: s = m->composer; break;
 	case Pdate: s = m->date; break;
 	case Ptitle: s = (!colspath && (m->title == nil || *m->title == 0)) ? m->basename : m->title; break;
@@ -310,8 +311,6 @@ redraw_(int full)
 	snprint(tmp+i, sizeof(tmp)-i, "%d%%", 100);
 	w += stringwidth(f, tmp+i);
 	snprint(tmp+i, sizeof(tmp)-i, "%d%%", volume);
-
-	lockdisplay(display);
 
 	if(back == nil || Dx(screen->r) != Dx(back->r) || Dy(screen->r) != Dy(back->r)){
 		freeimage(back);
@@ -454,7 +453,6 @@ redraw_(int full)
 	opcur = pcur;
 
 	flushimage(display, 1);
-	unlockdisplay(display);
 }
 
 static void
@@ -1358,8 +1356,6 @@ threadmain(int argc, char **argv)
 
 	if(initdraw(nil, nil, "zuke") < 0)
 		sysfatal("initdraw: %r");
-	unlockdisplay(display);
-	display->locking = 1;
 	f = display->defaultfont;
 	Scrollwidth = MAX(14, stringwidth(f, "#"));
 	Scrollheight = MAX(16, f->height);

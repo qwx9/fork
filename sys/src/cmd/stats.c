@@ -64,19 +64,19 @@ struct Machine
 {
 	char		*name;
 	char		*shortname;
-	int		remote;
+
+	int		pid;
+	int		nproc;
+
 	int		statsfd;
 	int		swapfd;
 	int		etherfd[10];
 	int		batteryfd;
 	int		tempfd;
-	int		disable;
 
 	uvlong		devswap[10];
 	uvlong		devsysstat[10];
 	uvlong		prevsysstat[10];
-	int		nproc;
-	int		lgproc;
 	uvlong		netetherstats[9];
 	uvlong		prevetherstats[9];
 	uvlong		batterystats[2];
@@ -86,13 +86,6 @@ struct Machine
 	char		buf[8*1024];
 	char		*bufp;
 	char		*ebufp;
-};
-
-enum
-{
-	Mainproc,
-	Inputproc,
-	NPROC,
 };
 
 enum
@@ -229,7 +222,6 @@ Graph	*graph;
 Machine	*mach;
 char	*mysysname;
 char	argchars[] = "8bcdeEfiIkmlnprstwz";
-int	pids[NPROC];
 int 	parity;	/* toggled to avoid patterns in textured background */
 int	nmach;
 int	ngraph;	/* totaly number is ngraph*nmach */
@@ -239,30 +231,20 @@ int	ylabels = 0;
 int	sleeptime = 1000;
 int	batteryperiod = 10000;
 int	tempperiod = 1000;
-
-char	*procnames[NPROC] = {"main", "input"};
+int	superpid = 0;
 
 void
-killall(char *s)
+killall(void)
 {
-	int i, pid;
-
-	pid = getpid();
-	for(i=0; i<NPROC; i++)
-		if(pids[i] && pids[i]!=pid)
-			postnote(PNPROC, pids[i], "kill");
-	exits(s);
+	postnote(PNGROUP, superpid, "kill");
 }
 
 void*
 emalloc(ulong sz)
 {
 	void *v;
-	v = malloc(sz);
-	if(v == nil) {
-		fprint(2, "stats: out of memory allocating %ld: %r\n", sz);
-		killall("mem");
-	}
+	if((v = malloc(sz)) == nil)
+		sysfatal("malloc: %r");
 	memset(v, 0, sz);
 	return v;
 }
@@ -270,23 +252,17 @@ emalloc(ulong sz)
 void*
 erealloc(void *v, ulong sz)
 {
-	v = realloc(v, sz);
-	if(v == nil) {
-		fprint(2, "stats: out of memory reallocating %ld: %r\n", sz);
-		killall("mem");
-	}
+	if((v = realloc(v, sz)) == nil && sz != 0)
+		sysfatal("realloc: %r");
 	return v;
 }
 
 char*
 estrdup(char *s)
 {
-	char *t;
-	if((t = strdup(s)) == nil) {
-		fprint(2, "stats: out of memory in strdup(%.10s): %r\n", s);
-		killall("mem");
-	}
-	return t;
+	if((s = strdup(s)) == nil)
+		sysfatal("strdup: %r");
+	return s;
 }
 
 void
@@ -308,19 +284,43 @@ colinit(Theme th[Ntcolor])
 	mkcol(5, th[Cmix1].c, th[Cmix2].c, th[Ccol6].c);
 }
 
+void
+checkhung(void)
+{
+	static char *Etab[] = {
+		"i/o on hungup channel",
+		"tls error",
+	};
+	char err[ERRMAX];
+	int i;
+
+	rerrstr(err, sizeof(err));
+	for(i = 0; i < nelem(Etab); i++)
+		if(strncmp(err, Etab[i], strlen(Etab[i])) == 0)
+			exits("restart");	/* let supervisor handle restart */
+}
+
+int
+eopen(char *name, int mode)
+{
+	int fd;
+
+	if((fd = open(name, mode)) < 0)
+		checkhung();
+	return fd;
+}
+
 int
 loadbuf(Machine *m, int *fd)
 {
 	int n;
 
-
 	if(*fd < 0)
 		return 0;
 	seek(*fd, 0, 0);
 	n = read(*fd, m->buf, sizeof m->buf-1);
-	if(n <= 0){
-		close(*fd);
-		*fd = -1;
+	if(n < 0){
+		checkhung();
 		return 0;
 	}
 	m->bufp = m->buf;
@@ -673,78 +673,82 @@ ilog10(uvlong j)
 	return i;
 }
 
-int
-initmach(Machine *m, char *name)
+void
+initmach(Machine *m)
 {
 	int n, i, j, fd;
 	uvlong a[MAXNUM];
-	char *p, mpt[256], buf[256];
+	char *p, buf[256];
 	Dir *d;
-	static char *archplaces[] = {
-		"/dev",
-		"/mnt/pm",
-		"/mnt/apm",	/* battery only */
+	static char *batteries[] = {
+		"dev/battery",
+		"mnt/pm/battery",
+		"mnt/apm/battery",
 	};
-
-	p = strchr(name, '!');
+	static char *cputemps[] = {
+		"dev/cputemp",
+		"mnt/pm/cputemp",
+	};
+	p = strchr(m->name, '!');
 	if(p)
 		p++;
 	else
-		p = name;
-	m->name = estrdup(p);
-	m->shortname = shortname(p);
-	m->remote = (strcmp(p, mysysname) != 0);
-	if(m->remote == 0)
-		strcpy(mpt, "");
+		p = m->name;
+	if(strcmp(p, mysysname) == 0)
+		strcpy(buf, "/");
 	else{
 		Waitmsg *w;
 		int pid;
 
-		snprint(mpt, sizeof mpt, "/n/%s", p);
+		rfork(RFNAMEG);
 
+		snprint(buf, sizeof buf, "/n/%s/", p);
 		pid = fork();
 		switch(pid){
 		case -1:
-			fprint(2, "can't fork: %r\n");
-			return 0;
+			sysfatal("fork: %r");
 		case 0:
-			execl("/bin/rimport", "rimport", name, "/", mpt, nil);
-			fprint(2, "can't exec: %r\n");
-			exits("exec");
+			close(2), open("/dev/null", OWRITE);	/* >[2] /dev/null */
+			execl("/bin/rimport", "rimport", m->name, "/", buf, nil);
+			sysfatal("exec: %r");
 		}
-		w = wait();
-		if(w == nil || w->pid != pid || w->msg[0] != '\0'){
+		while((w = wait()) != nil){
+			if(w->pid == pid)
+				break;
 			free(w);
-			return 0;
+		}
+		if(w == nil || w->msg[0] != '\0'){
+			free(w);
+			exits("restart");	/* supervisor restarts */
 		}
 		free(w);
 	}
+	if(chdir(buf) < 0){
+		checkhung();
+		sysfatal("chdir: %r");
+	}
 
-	snprint(buf, sizeof buf, "%s/dev/swap", mpt);
-	m->swapfd = open(buf, OREAD);
+	m->swapfd = eopen("dev/swap", OREAD);
 	if(loadbuf(m, &m->swapfd) && readswap(m, a))
 		memmove(m->devswap, a, sizeof m->devswap);
 
-	snprint(buf, sizeof buf, "%s/dev/sysstat", mpt);
-	m->statsfd = open(buf, OREAD);
+	m->statsfd = eopen("dev/sysstat", OREAD);
 	if(loadbuf(m, &m->statsfd)){
 		for(n=0; readnums(m, nelem(m->devsysstat), a, 0); n++)
 			;
 		m->nproc = n;
 	}else
 		m->nproc = 1;
-	m->lgproc = ilog10(m->nproc);
 
 	/* find all the ethernets */
 	n = 0;
-	snprint(buf, sizeof buf, "%s/net/", mpt);
-	if((fd = open(buf, OREAD)) >= 0){
+	if((fd = eopen("net/", OREAD)) >= 0){
 		for(d = nil; (i = dirread(fd, &d)) > 0; free(d)){
 			for(j=0; j<i; j++){
 				if(strncmp(d[j].name, "ether", 5))
 					continue;
-				snprint(buf, sizeof buf, "%s/net/%s/stats", mpt, d[j].name);
-				if((m->etherfd[n] = open(buf, OREAD)) < 0)
+				snprint(buf, sizeof buf, "net/%s/stats", d[j].name);
+				if((m->etherfd[n] = eopen(buf, OREAD)) < 0)
 					continue;
 				if(++n >= nelem(m->etherfd))
 					break;
@@ -752,41 +756,28 @@ initmach(Machine *m, char *name)
 			if(n >= nelem(m->etherfd))
 				break;
 		}
+		if(i < 0)
+			checkhung();
 		close(fd);
 	}
 	while(n < nelem(m->etherfd))
 		m->etherfd[n++] = -1;
 
-	for(i=0; i < nelem(archplaces); i++){
-		snprint(buf, sizeof buf, "%s/%s/battery", mpt, archplaces[i]);
-		m->batteryfd = open(buf, OREAD);
-		if(m->batteryfd < 0)
+	for(i=0; i < nelem(batteries); i++){
+		if((m->batteryfd = eopen(batteries[i], OREAD)) < 0)
 			continue;
 		if(loadbuf(m, &m->batteryfd) && readnums(m, nelem(m->batterystats), a, 0))
 			memmove(m->batterystats, a, sizeof(m->batterystats));
 		break;
 	}
-	for(i=0; i < nelem(archplaces); i++){
-		snprint(buf, sizeof buf, "%s/%s/cputemp", mpt, archplaces[i]);
-		m->tempfd = open(buf, OREAD);
-		if(m->tempfd < 0)
+	for(i=0; i < nelem(cputemps); i++){
+		if((m->tempfd = eopen(cputemps[i], OREAD)) < 0)
 			continue;
 		if(loadbuf(m, &m->tempfd))
 			for(n=0; n < nelem(m->temp) && readnums(m, 2, a, 0); n++)
 				m->temp[n] = a[0];
 		break;
 	}
-	return 1;
-}
-
-jmp_buf catchalarm;
-
-int
-alarmed(void *a, char *s)
-{
-	if(strcmp(s, "alarm") == 0)
-		notejmp(a, catchalarm, 1);
-	return 0;
 }
 
 int
@@ -848,30 +839,9 @@ vadd(uvlong *a, uvlong *b, int n)
 void
 readmach(Machine *m, int init)
 {
-	int n;
 	uvlong a[nelem(m->devsysstat)];
-	char buf[32];
+	int n;
 
-	if(m->remote && (m->disable || setjmp(catchalarm))){
-		if (m->disable++ >= 5)
-			m->disable = 0; /* give it another chance */
-		memmove(m->devsysstat, m->prevsysstat, sizeof m->devsysstat);
-		memmove(m->netetherstats, m->prevetherstats, sizeof m->netetherstats);
-		return;
-	}
-	snprint(buf, sizeof buf, "%s", m->name);
-	if (strcmp(m->name, buf) != 0){
-		free(m->name);
-		m->name = estrdup(buf);
-		free(m->shortname);
-		m->shortname = shortname(buf);
-		if(display != nil)	/* else we're still initializing */
-			eresized(0);
-	}
-	if(m->remote){
-		atnotify(alarmed, 1);
-		alarm(5000);
-	}
 	if(needswap(init) && loadbuf(m, &m->swapfd) && readswap(m, a))
 		memmove(m->devswap, a, sizeof m->devswap);
 	if(needstat(init) && loadbuf(m, &m->statsfd)){
@@ -879,6 +849,7 @@ readmach(Machine *m, int init)
 		memset(m->devsysstat, 0, sizeof m->devsysstat);
 		for(n=0; n<m->nproc && readnums(m, nelem(m->devsysstat), a, 0); n++)
 			vadd(m->devsysstat, a, nelem(m->devsysstat));
+		if(init) memmove(m->prevsysstat, m->devsysstat, sizeof m->devsysstat);
 	}
 	if(needether(init)){
 		memmove(m->prevetherstats, m->netetherstats, sizeof m->netetherstats);
@@ -887,6 +858,7 @@ readmach(Machine *m, int init)
 			if(loadbuf(m, &m->etherfd[n]) && readnums(m, nelem(m->netetherstats), a, 1))
 				vadd(m->netetherstats, a, nelem(m->netetherstats));
 		}
+		if(init) memmove(m->prevetherstats, m->netetherstats, sizeof m->netetherstats);
 	}
 	if(needbattery(init)){
 		if(loadbuf(m, &m->batteryfd) && readnums(m, nelem(m->batterystats), a, 0))
@@ -895,9 +867,22 @@ readmach(Machine *m, int init)
 	if(needtemp(init) && loadbuf(m, &m->tempfd))
 		for(n=0; n < nelem(m->temp) && readnums(m, 2, a, 0); n++)
 			 m->temp[n] = a[0];
-	if(m->remote){
-		alarm(0);
-		atnotify(alarmed, 0);
+}
+
+void
+updatemach(Machine *m)
+{
+	uvlong v, vmax;
+	Graph *g, *e;
+
+	for(g = &graph[ngraph*(m-mach)], e = g+ngraph; g < e; g++){
+		if(g->mach != m)
+			continue;
+		g->newvalue(m, &v, &vmax, 0);
+		if(vmax == 0)
+			vmax = 1;
+		vmax = roundvmax(vmax);
+		g->update(g, v, vmax);
 	}
 }
 
@@ -906,8 +891,6 @@ memval(Machine *m, uvlong *v, uvlong *vmax, int)
 {
 	*v = m->devswap[Mem];
 	*vmax = m->devswap[Maxmem];
-	if(*vmax == 0)
-		*vmax = 1;
 }
 
 void
@@ -915,8 +898,6 @@ swapval(Machine *m, uvlong *v, uvlong *vmax, int)
 {
 	*v = m->devswap[Swap];
 	*vmax = m->devswap[Maxswap];
-	if(*vmax == 0)
-		*vmax = 1;
 }
 
 void
@@ -924,8 +905,6 @@ reclaimval(Machine *m, uvlong *v, uvlong *vmax, int)
 {
 	*v = m->devswap[Reclaim];
 	*vmax = m->devswap[Maxreclaim];
-	if(*vmax == 0)
-		*vmax = 1;
 }
 
 void
@@ -933,8 +912,6 @@ kernval(Machine *m, uvlong *v, uvlong *vmax, int)
 {
 	*v = m->devswap[Kern];
 	*vmax = m->devswap[Maxkern];
-	if(*vmax == 0)
-		*vmax = 1;
 }
 
 void
@@ -942,8 +919,6 @@ drawval(Machine *m, uvlong *v, uvlong *vmax, int)
 {
 	*v = m->devswap[Draw];
 	*vmax = m->devswap[Maxdraw];
-	if(*vmax == 0)
-		*vmax = 1;
 }
 
 void
@@ -1015,14 +990,16 @@ loadval(Machine *m, uvlong *v, uvlong *vmax, int init)
 void
 idleval(Machine *m, uvlong *v, uvlong *vmax, int)
 {
-	*v = m->devsysstat[Idle]/m->nproc;
+	*v = m->devsysstat[Idle];
+	if(m->nproc) *v /= m->nproc;
 	*vmax = 100;
 }
 
 void
 inintrval(Machine *m, uvlong *v, uvlong *vmax, int)
 {
-	*v = m->devsysstat[InIntr]/m->nproc;
+	*v = m->devsysstat[InIntr];
+	if(m->nproc) *v /= m->nproc;
 	*vmax = 100;
 }
 
@@ -1143,10 +1120,8 @@ dropgraph(int which)
 			n = i;
 			break;
 		}
-	if(n < 0){
-		fprint(2, "stats: internal error can't drop graph\n");
-		killall("error");
-	}
+	if(n < 0)
+		sysfatal("internal error can't drop graph");
 	ograph = graph;
 	graph = emalloc(nmach*(ngraph-1)*sizeof(Graph));
 	for(i=0; i<nmach; i++){
@@ -1162,32 +1137,50 @@ dropgraph(int which)
 	present[which] = 0;
 }
 
-int
+void
 addmachine(char *name)
 {
-	if(ngraph > 0){
-		fprint(2, "stats: internal error: ngraph>0 in addmachine()\n");
-		usage();
-	}
-	if(mach == nil)
-		nmach = 0;	/* a little dance to get us started with local machine by default */
 	mach = erealloc(mach, (nmach+1)*sizeof(Machine));
 	memset(mach+nmach, 0, sizeof(Machine));
-	if (initmach(mach+nmach, name)){
-		nmach++;
-		return 1;
-	} else
-		return 0;
+	mach[nmach].name = estrdup(name);
+	mach[nmach].shortname = shortname(name);
+	nmach++;
+}
+
+int
+drawtitle(Machine *m)
+{
+	int j, n, l, x, y, dx;
+	char buf[128];
+
+	x = screen->r.min.x+Labspace+stringwidth(font, "0")+Labspace+1;
+	y = screen->r.min.y+Labspace+font->height+Labspace;
+	dx = (screen->r.max.x-x)/nmach;
+	x += (m-mach)*dx;
+	draw(screen, Rect(x, screen->r.min.y, x+dx, y-1), display->white, nil, ZP);
+	j = dx/stringwidth(font, "0");
+	n = m->nproc;
+	if(n>1 && j>=1+3+(l = ilog10(n))){	/* first char of name + (n) */
+		j -= 3+l;
+		if(j <= 0)
+			j = 1;
+		snprint(buf, sizeof buf, "%.*s(%d)", j, m->shortname, n);
+	}else if(n > 0){
+		snprint(buf, sizeof buf, "%.*s", j, m->shortname);
+	}else{
+		snprint(buf, sizeof buf, "%.*s ⌛", j, m->shortname);
+	}
+	string(screen, Pt(x+Labspace, screen->r.min.y + Labspace), display->black, ZP, font, buf);
+	return x;
 }
 
 void
 resize(void)
 {
-	int i, j, n, startx, starty, x, y, dx, dy, ondata, maxx;
+	int i, j, startx, starty, x, y, dx, dy, ondata, maxx;
 	Graph *g;
 	Rectangle machr, r;
 	uvlong v, vmax;
-	char buf[128];
 
 	draw(screen, screen->r, tcols[Cback], nil, ZP);
 
@@ -1206,19 +1199,12 @@ resize(void)
 	}
 
 	/* label top edge */
-	dx = (screen->r.max.x - startx)/nmach;
-	for(x=startx, i=0; i<nmach; i++,x+=dx){
+	dx = screen->r.max.x - startx;
+	startx = x = drawtitle(mach);
+	for(i=1; i<nmach; i++){
+		dx = drawtitle(mach+i) - x;
+		x += dx;
 		draw(screen, Rect(x-1, starty-1, x, screen->r.max.y), tcols[Cbord], nil, ZP);
-		j = dx/stringwidth(font, "0");
-		n = mach[i].nproc;
-		if(n>1 && j>=1+3+mach[i].lgproc){	/* first char of name + (n) */
-			j -= 3+mach[i].lgproc;
-			if(j <= 0)
-				j = 1;
-			snprint(buf, sizeof buf, "%.*s(%d)", j, mach[i].shortname, n);
-		}else
-			snprint(buf, sizeof buf, "%.*s", j, mach[i].shortname);
-		string(screen, Pt(x+Labspace, screen->r.min.y + Labspace), tcols[Ctext], ZP, font, buf);
 	}
 
 	maxx = screen->r.max.x;
@@ -1267,84 +1253,65 @@ resize(void)
 	flushimage(display, 1);
 }
 
+int
+machproc(Machine *m, int delay)
+{
+	int pid;
+
+	m->nproc = 0;
+	if((pid = rfork(RFPROC|RFMEM|RFFDG)) == 0){
+		procsetname("%s", m->shortname);
+		if(delay){
+			lockdisplay(display);
+			drawtitle(m);
+			flushimage(display, 1);
+			unlockdisplay(display);
+			sleep(delay);
+		}
+		initmach(m);
+		readmach(m, 1);
+		lockdisplay(display);
+		drawtitle(m);
+		for(;;) {
+			parity = pid++ & 1;
+			updatemach(m);
+			flushimage(display, 1);
+			unlockdisplay(display);
+
+			sleep(sleeptime);
+
+			readmach(m, 0);
+			lockdisplay(display);
+		}
+	}
+	if(pid < 0)
+		sysfatal("rfork: %r");
+	return pid;
+}
+
 void
 eresized(int new)
 {
 	lockdisplay(display);
-	if(new && getwindow(display, Refnone) < 0) {
-		fprint(2, "stats: can't reattach to window\n");
-		killall("reattach");
-	}
+	if(new && getwindow(display, Refnone) < 0)
+		sysfatal("can't reattach to window: %r");
 	resize();
 	unlockdisplay(display);
 }
 
 void
-inputproc(void)
-{
-	Event e;
-	int i;
-
-	for(;;){
-		switch(eread(Emouse|Ekeyboard, &e)){
-		case Emouse:
-			if(e.mouse.buttons == 4){
-				lockdisplay(display);
-				for(i=0; i<Nmenu2; i++)
-					if(present[i])
-						memmove(menu2str[i], "drop ", Opwid);
-					else
-						memmove(menu2str[i], "add  ", Opwid);
-				i = emenuhit(3, &e.mouse, &menu2);
-				if(i >= 0){
-					if(!present[i])
-						addgraph(i);
-					else if(ngraph > 1)
-						dropgraph(i);
-					resize();
-				}
-				unlockdisplay(display);
-			}
-			break;
-		case Ekeyboard:
-			if(e.kbdc==Kdel || e.kbdc=='q')
-				killall(nil);
-			break;
-		}
-	}
-}
-
-void
-startproc(void (*f)(void), int index)
-{
-	int pid;
-
-	switch(pid = rfork(RFPROC|RFMEM|RFNOWAIT)){
-	case -1:
-		fprint(2, "stats: fork failed: %r\n");
-		killall("fork failed");
-	case 0:
-		f();
-		fprint(2, "stats: %s process exits\n", procnames[index]);
-		if(index >= 0)
-			killall("process died");
-		exits(nil);
-	}
-	if(index >= 0)
-		pids[index] = pid;
-}
-
-void
 main(int argc, char *argv[])
 {
+	Event e;
+	Waitmsg *w;
+	Machine *m;
 	int i, j;
 	double secs;
-	uvlong v, vmax, nargs;
 	char args[100];
+	int nargs;
 
 	quotefmtinstall();
 
-	nmach = 1;
 	mysysname = getenv("sysname");
 	if(mysysname == nil){
 		fprint(2, "stats: can't find $sysname: %r\n");
@@ -1378,17 +1345,10 @@ main(int argc, char *argv[])
 	}ARGEND
 
 	if(argc == 0){
-		mach = emalloc(nmach*sizeof(Machine));
-		initmach(&mach[0], mysysname);
-		readmach(&mach[0], 1);
+		addmachine(mysysname);
 	}else{
-		rfork(RFNAMEG);
-		for(i=j=0; i<argc; i++){
-			if (addmachine(argv[i]))
-				readmach(&mach[j++], 1);
-		}
-		if (j == 0)
-			exits("connect");
+		for(i=0; i<argc; i++)
+			addmachine(argv[i]);
 	}
 
 	for(i=0; i<nargs; i++)
@@ -1462,15 +1422,13 @@ main(int argc, char *argv[])
 	if(ngraph == 0)
 		addgraph(Mload);
 
-	for(i=0; i<nmach; i++)
+	for(i=0; i<nmach; i++){
 		for(j=0; j<ngraph; j++)
 			graph[i*ngraph+j].mach = &mach[i];
-
-	if(initdraw(nil, nil, "stats") < 0){
-		fprint(2, "stats: initdraw failed: %r\n");
-		exits("initdraw");
 	}
-	display->locking = 1;	/* tell library we're using the display lock */
+
+	if(initdraw(nil, nil, "stats") < 0)
+		sysfatal("initdraw failed: %r");
 
 	Theme th[Ntcolor] = {
 		[Cback] { "back",	DWhite },
@@ -1490,26 +1448,57 @@ main(int argc, char *argv[])
  		tcols[i] = allocimage(display, Rect(0,0,1,1), screen->chan, 1, th[i].c);
 	colinit(th);
 	einit(Emouse|Ekeyboard);
-	startproc(inputproc, Inputproc);
-	pids[Mainproc] = getpid();
-
 	resize();
+	unlockdisplay(display);
 
-	unlockdisplay(display); /* display is still locked from initdraw() */
-	for(;;){
-		for(i=0; i<nmach; i++)
-			readmach(&mach[i], 0);
-		lockdisplay(display);
-		parity = 1-parity;
-		for(i=0; i<nmach*ngraph; i++){
-			graph[i].newvalue(graph[i].mach, &v, &vmax, 0);
-			if(vmax == 0)
-				vmax = 1;
-			vmax = roundvmax(vmax);
-			graph[i].update(&graph[i], v, vmax);
+	switch(j = rfork(RFPROC|RFMEM|RFNOTEG)){
+	case -1:
+		sysfatal("fork: %r");
+	case 0:
+		procsetname("supervisor");
+		for(m = mach; m < mach+nmach; m++)
+			m->pid = machproc(m, 0);
+		while((w = wait()) != nil){
+			/* replace child labourer like it's the 1830s */
+			for(m = mach; m < mach+nmach; m++)
+				if(m->pid == w->pid){
+					if(strstr(w->msg, "restart") != nil)
+						m->pid = machproc(m, 5000);
+					else
+						m->pid = 0;
+					break;
+				}
+			free(w);
 		}
-		flushimage(display, 1);
-		unlockdisplay(display);
-		sleep(sleeptime);
+		sysfatal("no children left");
 	}
+	superpid = j;
+	atexit(killall);
+
+	for(;;)
+		switch(eread(Emouse|Ekeyboard, &e)){
+		case Emouse:
+			if(e.mouse.buttons == 4){
+				lockdisplay(display);
+				for(i=0; i<Nmenu2; i++)
+					if(present[i])
+						memmove(menu2str[i], "drop ", Opwid);
+					else
+						memmove(menu2str[i], "add  ", Opwid);
+				i = emenuhit(3, &e.mouse, &menu2);
+				if(i >= 0){
+					if(!present[i])
+						addgraph(i);
+					else if(ngraph > 1)
+						dropgraph(i);
+					resize();
+				}
+				unlockdisplay(display);
+			}
+			break;
+		case Ekeyboard:
+			if(e.kbdc==Kdel || e.kbdc=='q')
+				exits(nil);
+			break;
+		}
 }
