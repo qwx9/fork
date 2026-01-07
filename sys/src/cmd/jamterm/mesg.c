@@ -97,7 +97,7 @@ void
 inmesg(Hmesg type, int count)
 {
 	Text *t;
-	int i, m;
+	int i, m, menu;
 	long l;
 	vlong vl;
 	Flayer *lp;
@@ -130,7 +130,7 @@ inmesg(Hmesg type, int count)
 		break;
 
 	case Hcurrent:
-		if(whichmenu(m) < 0)
+		if((menu=whichmenu(m))<0)
 			break;
 		if((t = whichtext(m)) == nil
 		&& (t = sweeptext(0, m)) == nil)
@@ -141,6 +141,7 @@ inmesg(Hmesg type, int count)
 		if(which != nil && ((Text *)which->user1) == &cmd && m != cmd.tag){
 			flupfront(lp);
 			flborder(lp, 0);
+			setmenuhit(menu);
 			work = lp;
 		}else
 			current(lp, 1, 1);
