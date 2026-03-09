@@ -1112,6 +1112,8 @@ isalnum(Rune c)
 		return 0;
 	if(utfrune("!\"#$%&'()*+,-./:;<=>?@[\\]^`{|}~", c))
 		return 0;
+	if(c == L'│')
+		return 0;
 	return 1;
 }
 
