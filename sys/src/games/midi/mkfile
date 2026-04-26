@@ -1,0 +1,13 @@
+</$objtype/mkfile
+TARG=\
+	midi\
+	mid2s\
+	dmid\
+	midump\
+
+HFILES=
+OFILES=\
+	midifile.$O\
+
+</sys/src/cmd/mkmany
+BIN=/$objtype/bin/games

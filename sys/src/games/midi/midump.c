@@ -25,7 +25,7 @@ event(Track *t)
 
 	dprint("Δ %.2f ", t->Δ);
 	if(e >> 4 != 0xf)
-		dprint("ch%02d ", chan - msg.c);
+		dprint("ch%02zd ", chan - msg.chan);
 
 	// FIXME: also unhandled ones (look at the byte values; pp.43 on; tables pp.102 → array
 	switch(msg.type){
@@ -43,7 +43,7 @@ event(Track *t)
 	case Ckeyafter: dprint("polyphonic key pressure/aftertouch %02ux %02ux", msg.arg1, msg.arg2); break;
 	case Cchanafter: dprint("channel pressure/aftertouch %02ux %02ux", msg.arg1, msg.arg2); break;
 	case Csysex: break;	// FIXME
-	case Csysreset:	break;	// FIXME
+	//case Csysreset:	break;	// FIXME
 	case Cunknown: dprint("unhandled event %02ux, skipped", msg.type); break;
 	}
 	dprint(" [");
