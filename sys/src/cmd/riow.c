@@ -414,13 +414,19 @@ process(char *s)
 			break;
 		}
 
-		if((mod & Mmod4) == 0 || keyevent(*s, r) != 0){
+		/* FIXME: riow filters everything with mod4; instead we ought
+		 * to pass all events incl mod4 itself unless they are caught
+		 * as a shortcut, and that includes filtering K counterparts;
+		 * compare to raw kbdfs output */
+		if(((mod & Mmod4) == 0 || keyevent(*s, r) != 0) && r != Kmod4){
 			memmove(b+o, p, n);
 			o += n;
 		}
 	}
+	if(*s != 'K' && o == 1)
+		return 0;
 	b[o++] = 0;
-	return (o > 1 && write(1, b, o) <= 0) ? -1 : 0;
+	return write(1, b, o) != o ? -1 : 0;
 }
 
 static void
