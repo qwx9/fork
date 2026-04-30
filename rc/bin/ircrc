@@ -1,0 +1,316 @@
+#!/bin/rc
+
+rfork ne
+
+nl='
+'
+server=irc.oftc.net
+port=6697
+realname='<nil>'
+target=''
+nick=$user
+username=$user
+pass=()
+serverpass=()
+conncmd=tlsclient
+reconntime=60
+maxlag=1
+lastevent=()
+
+fn etime {
+	date -f '[\[]hh:mm[\]]'
+}
+
+fn hangup {
+	p=`{cat /env/cpid}
+	if(! ~ $#p 0)
+		echo kill >/proc/$p/ctl
+	p=`{cat /env/wpid}
+	if(! ~ $#p 0)
+		echo kill >/proc/$p/notepg
+}
+
+fn sigint sighup sigterm {
+	hangup
+}
+
+fn pretty {
+	tr -d '\x2\x8\xd\x1f' | while (line=`$nl{read}) {
+		lastevent=`{date -n}
+		cmd=`{echo $line}
+		if(~ $cmd(1) :*)
+			cmd = $cmd(2-)
+		switch ($cmd(1)) {
+		case PRIVMSG
+			line = `$nl{echo -n $line | privmsg}
+		case JOIN QUIT PART NICK
+			line = `$nl{echo -n $line | misc}
+		case NOTICE
+			line = `$nl{echo -n $line | notice}
+		case PING
+			echo PONG $cmd(2)
+			line = ()
+		case PONG
+			line = ()
+		case *
+			line = `$nl{echo -n $line | numeric}
+		}
+		if (! ~ $#line 0)
+			echo `{etime} $line >[1=5]
+	}
+}
+
+fn watch {
+	while(){
+		sleep 60
+		t=`{cat /env/lastevent}
+		if(~ $t $t0){
+			t=`{echo `{date -n} - $t | bc}
+			if(test $t -gt $maxlag)
+				hangup
+			if not
+				echo PING $server
+		}
+		if not
+			t0=$t
+	}
+}
+
+fn work {
+	rfork s
+	<[0=4] cat &
+	wpid=$pid
+	cpid=$apid
+	ident
+	pretty |[2] watch
+}
+
+fn connect {
+	<[4=0] >[5=1] $conncmd tcp!$server!$port /bin/rc -c work
+}
+
+fn ident {
+	if (~ $#serverpass 1)
+		echo PASS $serverpass
+	echo USER $username foo bar :$realname
+	echo NICK $nick
+	if (~ $#pass 1)
+		echo PRIVMSG NickServ :IDENTIFY $pass
+}
+
+fn input {
+	awk -v 'target='^$"target '
+	BEGIN{
+		if(last = listlast(target)){
+			print "JOIN", target
+			victims[last]
+			title()
+		}
+	}
+	function listlast(list, a){
+		for(i=split(list, a, ",+"); i>=1; i--)
+			if(a[i] != "")
+				return a[i]
+		return ""
+	}
+	function mktarget(s){
+		for(v in victims)
+			s = s "," v
+		return substr(s, 2)
+	}
+	function title(){
+		system("title ''"mktarget()"''")
+	}
+	function etime(c, t){
+		c = "etime"
+		c | getline t
+		close(c)
+		return t
+	}
+	function out(nskip, space, pref, echo,	line, r){
+		line = $0
+		if(nskip){
+			r = "^";
+			for(i = 0; i < nskip; i++)
+				r = r "[^\t ]+[\t ]*"
+			sub(r, "", line)
+		}
+		if(echo)
+			print echo line >"/dev/cons"
+		print pref (space&&line ? " " : "") line
+	}
+	$1 !~ /^\//{
+		target = mktarget()
+		out(0, 0, "PRIVMSG "target" :", length ? etime()" ("target")	⇐	" : "")
+		next
+	}
+	$1 == "/!"{
+		if(NF > 1){
+			target = mktarget()
+			c = substr($0, index($0, $2))
+			while(c | getline)
+				out(0, 0, "PRIVMSG "target" :", "PRIVMSG "target" :")
+			close(c)
+		}
+		next
+	}
+	$1 == "/M"{ out(1, 1, "MODE"); next }
+	$1 == "/N"{ if(NF > 2) out(2, 0, "NOTICE "$2" :"); next }
+	$1 == "/T"{ if(NF > 1) out(1, 1, "TOPIC"); next }
+	$1 == "/W"{ out(1, 1, "WHOIS"); next }
+	$1 == "/a"{ out(1, 0, "AWAY :"); next }
+	$1 == "/j" && (NF==2 || NF==3){
+		if(last = listlast($2)){
+			delete victims
+			victims[last]
+			title()
+			out(1, 1, "JOIN")
+		}
+		next
+	}
+	$1 == "/l"{ out(1, 1, "LIST"); next }
+	$1 == "/m"{
+		if(NF > 2)
+			out(2, 0, "PRIVMSG "$2" :", etime()" ("$2")	⇐	")
+		next
+	}
+	$1 == "/n"{ nick = $2; out(1, 1, "NICK"); next }
+	$1 == "/p"{
+		if(NF > 1){
+			out(2, 0, "PART "$2" :")
+			split($2, a, ",+")
+			for(v in a)
+				delete victims[a[v]]
+			title()
+		}
+		next
+	}
+	$1 == "/q"{ out(1, 0); next }
+	$1 == "/t"{
+		delete victims
+		split($2, a, ",+")
+		for(v in a)
+			if(a[v])
+				victims[a[v]]
+		title();
+		next
+	}
+	$1 == "/u"{ out(1, 1, "USERS"); next }
+	$1 == "/w"{ out(1, 1, "WHO"); next }
+	$1 == "/x"{ out(1, 0, "QUIT :"); exit }
+	{ print "unknown command" >"/dev/cons" }
+	'
+	hangup
+	echo kill >/proc/$pid/notepg
+}
+
+fn misc {
+	sed '
+		s/^://
+		s/!~?[a-zA-Z0-9_@\-|.{=\/:]+ /:/' |
+	awk -F ':' '
+	{
+		s =  $2 " «" $1 "»\t" $3;
+		for(i = 4; i < NF+1; i++)
+			s = s ":" $i;
+		printf("%s\n", s);
+	}' 
+}
+
+fn notice {
+	sed '
+		s/^NOTICE /:'^$server^':/
+		s/^://
+		s/!~?[a-zA-Z0-9_@\-|.{=\/]+ /:/' |
+	awk -F ':' '
+	{
+		s = "-" $1 "-	⇒\t" $3;
+		for(i = 4; i < NF+1; i++)
+			s = s ":" $i;
+		printf("%s\n", s);
+	}' 
+}
+
+fn numeric {
+	sed 's/^:[a-zA-Z0-9_@\-|.!=#]+ //
+		s/ '^$nick^' //
+		s/^353= /***	Users on /
+		s/^[0-9][0-9][0-9] ?:?/***	/'
+}
+
+fn privmsg {
+	sed ' 
+		s/^:/«/
+		s/!~?[a-zA-Z0-9_@\-|.{=\/:]+ PRIVMSG /»	⇒	:/
+		s/#[a-zA-Z0-9_@\-|.#]+/(&)/' | 
+	awk -F ':' '
+	{
+		s = $2 $1  $3;
+		for(i = 4; i < NF+1; i++)
+			s = s ":" $i;
+		printf("%s\n", s);
+	}'
+}
+
+fn title {
+	if (! ~ $#winid 0) {
+		if (test -f /mnt/acme/$winid/ctl)
+			echo name /$server/$"1/-ircrc > /mnt/acme/$winid/ctl
+	}
+	if not
+		label $"1@$server
+}
+
+while (~ $1 -*) {
+	switch ($1) {
+	case -n
+		nick=$2
+		shift
+	case -p
+		port=$2
+		shift
+	case -r
+		realname=$2
+		shift
+	case -t
+		target=$2
+		shift
+	case -u
+		username=$2
+		shift
+	case -T
+	case -U
+		conncmd=aux/trampoline
+	case -*
+		echo 'usage: ircrc  [-p port] [-r realname] [-t target] [-n nick] [-u username] [-U] [server]' >[1=2]
+		exit 'usage'
+	}
+	shift
+}
+
+if (~ $#* 1) {
+	switch ($1) {
+	case bitlbee
+		server=im.bitlbee.org
+	case oftc
+		server=irc.oftc.net
+	case *
+		server=$1
+	}
+}
+
+userpass=`{auth/userpasswd -n 'server='^$server^' service=irc user='^$nick >[2]/dev/null}
+if(~ $#userpass 2)
+	pass=$userpass(2)
+userpass=`{auth/userpasswd -n 'server='^$server^' service=ircsrv user='^$nick >[2]/dev/null}
+if(~ $#userpass 2)
+	serverpass=$userpass(2)
+
+title $target
+rfork s
+input | while(){
+	echo `{etime} !!! connecting to tcp!$server!$port...
+	connect
+	echo `{etime} !!! reconnecting in $reconntime seconds...
+	sleep $reconntime
+}
