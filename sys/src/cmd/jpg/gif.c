@@ -12,7 +12,7 @@ int		eflag = 0;
 int		nineflag = 0;
 int		threeflag = 0;
 int		output = 0;
-ulong	outchan = CMAP8, goutchan = CMAP8;
+ulong	outchan = CMAP8;
 char	*stem;
 Image	**allims;
 int		which;
@@ -206,21 +206,21 @@ addalpha(Rawimage *i)
 		i->chans[0] = expand(i->chans[0], i->chanlen/1, 1);
 		i->chanlen = 2*(i->chanlen/1);
 		i->chandesc = CRGBVA16;
-		goutchan = CHAN2(CMap, 8, CAlpha, 8);
+		outchan = CHAN2(CMap, 8, CAlpha, 8);
 		break;
 
 	case GREY8:
 		i->chans[0] = expand(i->chans[0], i->chanlen/1, 1);
 		i->chanlen = 2*(i->chanlen/1);
 		i->chandesc = CYA16;
-		goutchan = CHAN2(CGrey, 8, CAlpha, 8);
+		outchan = CHAN2(CGrey, 8, CAlpha, 8);
 		break;
 
 	case RGB24:
 		i->chans[0] = expand(i->chans[0], i->chanlen/3, 3);
 		i->chanlen = 4*(i->chanlen/3);
 		i->chandesc = CRGBA32;
-		goutchan = RGBA32;
+		outchan = RGBA32;
 		break;
 
 	default:
@@ -245,7 +245,7 @@ blackout(Rawimage *r, Rawimage *c)
 	rp = r->chans[0];
 	cp = c->chans[0];
 	trindex = r->giftrindex;
-	if(goutchan == RGBA32)
+	if(outchan == RGBA32)
 		for(i=0; i<r->chanlen; i++){
 			if(*rp == trindex){
 				*cp++ = 0x00;
@@ -420,7 +420,7 @@ show(int fd, char *name)
 				}
 			}else
 				fd = 1;
-			chantostr(buf, goutchan);
+			chantostr(buf, outchan);
 			fprint(fd, "%11s %11d %11d %11d %11d ", buf,
 				rgbv[k]->r.min.x, rgbv[k]->r.min.y, rgbv[k]->r.max.x, rgbv[k]->r.max.y);
 			if(write(fd, rgbv[k]->chans[0], rgbv[k]->chanlen) != rgbv[k]->chanlen){
