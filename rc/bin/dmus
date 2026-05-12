@@ -3,7 +3,7 @@
 sf2=patch93.sc-55.sf2
 # midipipe -r >/dev/usb/ep10.2/data
 if(test -f /srv/midi)
-	c=( '{' games/mid2s -m '|' tee -a /srv/midi '|' dd -if /dev/zero '}' )
+	c=( '{' games/mid2s -m '|' tee -a /srv/midi '|' dd -if /dev/zero ';' games/mid2s -m /lib/midi/reset.mid '>>'/srv/midi '}' )
 if not if(test -f /lib/midi/sf2/$sf2)
 	c=(games/sf2mid /lib/midi/sf2/$sf2)
 if not if(test -f /mnt/wad/genmidi)
