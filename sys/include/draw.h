@@ -14,7 +14,7 @@ typedef struct	Rectangle Rectangle;
 typedef struct	RGB RGB;
 typedef struct	Screen Screen;
 typedef struct	Subfont Subfont;
-typedef long	Warp[3][3];
+typedef struct	Warp Warp;
 typedef struct	Theme Theme;
 
 #pragma incomplete Mouse
@@ -149,6 +149,14 @@ enum {
 	XBGR32	= CHAN4(CIgnore, 8, CBlue, 8, CGreen, 8, CRed, 8),
 };
 
+/*
+ * Warp flags used to enable optimized paths
+ * based on the encoded affine map's properties.
+ */
+enum {
+	WFintupscale	= 1,	/* integer upscaling */
+};
+
 extern	char*	chantostr(char*, ulong);
 extern	ulong	strtochan(char*);
 extern	int		chantodepth(ulong);
@@ -224,6 +232,12 @@ struct RGB
 	ulong	red;
 	ulong	green;
 	ulong	blue;
+};
+
+struct Warp
+{
+	long	m[3][3];
+	int	flags;		/* set by mkwarp(2). do not touch */
 };
 
 struct	Theme
@@ -469,8 +483,8 @@ extern void	fillarc(Image*, Point, int, int, Image*, Point, int, int);
 extern void	fillarcop(Image*, Point, int, int, Image*, Point, int, int, Drawop);
 extern void	border(Image*, Rectangle, int, Image*, Point);
 extern void	borderop(Image*, Rectangle, int, Image*, Point, Drawop);
-extern void	mkwarp(Warp, double[3][3]);
-extern void	affinewarp(Image*, Rectangle, Image*, Point, Warp, int);
+extern Warp	mkwarp(double[3][3]);
+extern void	affinewarp(Image*, Rectangle, Image*, Point, Warp*, int);
 
 /*
  * Font management
