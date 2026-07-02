@@ -516,8 +516,9 @@ quirks(KDev *kd)
 	if(d->usb->vid == 0x045e && d->usb->did == 0x028e
 	|| d->usb->vid == 0x0f0d && d->usb->did == 0x00ed
 	|| d->usb->vid == 0x1bad && d->usb->did == 0xf03a
-	|| d->usb->vid == 0x2dc8 && d->usb->did == 0x310a)
+	|| d->usb->vid == 0x2dc8 && d->usb->did == 0x310a){
 		xbox360(kd);
+	}
 }
 
 static void
