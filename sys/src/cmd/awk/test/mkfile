@@ -1,8 +1,0 @@
-</$objtype/mkfile
-
-TEST=awk
-
-</sys/src/cmd/mktest
-
-clean:V:
-	rm -rf $CLEANFILES arnold-fixes foo*
