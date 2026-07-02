@@ -684,6 +684,7 @@ initmach(Machine *m)
 		"dev/battery",
 		"mnt/pm/battery",
 		"mnt/apm/battery",
+		"shr/usb/battery",
 	};
 	static char *cputemps[] = {
 		"dev/cputemp",
