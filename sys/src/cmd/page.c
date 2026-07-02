@@ -5,6 +5,7 @@
 #include <cursor.h>
 #include <keyboard.h>
 #include <plumb.h>
+#include <geometry.h>
 
 typedef struct Page Page;
 struct Page {
@@ -36,7 +37,7 @@ int rotate;
 int invert;
 int viewgen;
 int forward;	/* read ahead direction: >= 0 forwards, < 0 backwards */
-Point resize, pos;
+Point resize;
 Page *root, *current;
 Page lru;
 QLock pagelock;
@@ -57,6 +58,8 @@ enum{
 	Ncols,
 };
 Image *cols[Ncols];
+Matrix warpmat;
+Warp warp;
 
 char pagespool[] = "/tmp/pagespool.";
 
@@ -149,7 +152,6 @@ void showpage1(Page *);
 void showpage(Page *);
 void drawpage(Page *);
 Point pagesize(Page *);
-void drawlock(int);
 
 Page*
 addpage(Page *up, char *name, int (*popen)(Page *), void *pdata, int fd)
@@ -872,7 +874,7 @@ openpage(Page *p)
 	fd = -1;
 	if(p->open == nil || (fd = p->open(p)) < 0)
 		p->open = nil;
-	else {
+	else{
 		if(rotate)
 			pipeline(fd, "exec rotate -r %d", rotate);
 		if(resize.x)
@@ -881,6 +883,66 @@ openpage(Page *p)
 			pipeline(fd, "exec resample -f catmullrom -y %d", resize.y);
 	}
 	return fd;
+}
+
+Point
+xformpt(Point p, Matrix m)
+{
+	Point2 q;
+
+	q = (Point2){p.x, p.y, 1};
+	q = xform(q, m);
+	return (Point){q.x+0.5, q.y+0.5};
+}
+
+Rectangle
+xformrect(Rectangle r, Matrix m)
+{
+	return Rpt(xformpt(r.min, m), xformpt(r.max, m));
+}
+
+static void
+mktranslation(Matrix m, double x, double y)
+{
+	identity(m);
+	m[0][2] = x;
+	m[1][2] = y;
+}
+
+static void
+mkscale(Matrix m, double x, double y)
+{
+	identity(m);
+	m[0][0] = x;
+	m[1][1] = y;
+}
+
+static void
+translatem(Matrix m, double x, double y)
+{
+	Matrix t;
+
+	memmove(t, m, sizeof(Matrix));
+	mktranslation(m, x, y);
+	mulm(m, t);
+}
+
+static void
+scalem(Matrix m, double x, double y)
+{
+	Matrix t;
+
+	memmove(t, m, sizeof(Matrix));
+	mkscale(m, x, y);
+	mulm(m, t);
+}
+
+void
+resetwarp(void)
+{
+	identity(warpmat);
+	translatem(warpmat, screen->r.min.x, screen->r.min.y);
+	warp = mkwarp(warpmat);
 }
 
 static ulong
@@ -1146,75 +1208,10 @@ gendrawdiff(Image *dst, Rectangle bot, Rectangle top,
 	}
 }
 
-int
-alphachan(ulong chan)
-{
-	for(; chan; chan >>= 8)
-		if(TYPE(chan) == CAlpha)
-			return 1;
-	return 0;
-}
-
-void
-zoomdraw(Image *d, Rectangle r, Rectangle top, Image *b, Image *s, Point sp, int f)
-{
-	Rectangle dr;
-	Image *t;
-	Point a;
-	int w;
-
-	a = ZP;
-	if(r.min.x < d->r.min.x){
-		sp.x += (d->r.min.x - r.min.x)/f;
-		a.x = (d->r.min.x - r.min.x)%f;
-		r.min.x = d->r.min.x;
-	}
-	if(r.min.y < d->r.min.y){
-		sp.y += (d->r.min.y - r.min.y)/f;
-		a.y = (d->r.min.y - r.min.y)%f;
-		r.min.y = d->r.min.y;
-	}
-	rectclip(&r, d->r);
-	w = s->r.max.x - sp.x;
-	if(w > Dx(r))
-		w = Dx(r);
-	dr = r;
-	dr.max.x = dr.min.x+w;
-	if(!alphachan(s->chan))
-		b = nil;
-	if(f <= 1){
-		if(b) gendrawdiff(d, dr, top, b, sp, nil, ZP, SoverD);
-		gendrawdiff(d, dr, top, s, sp, nil, ZP, SoverD);
-		return;
-	}
-	if((t = allocimage(display, dr, s->chan, 0, 0)) == nil)
-		return;
-	for(; dr.min.y < r.max.y; dr.min.y++){
-		dr.max.y = dr.min.y+1;
-		draw(t, dr, s, nil, sp);
-		if(++a.y == f){
-			a.y = 0;
-			sp.y++;
-		}
-	}
-	dr = r;
-	for(sp=dr.min; dr.min.x < r.max.x; sp.x++){
-		dr.max.x = dr.min.x+1;
-		if(b != nil) gendrawdiff(d, dr, top, b, sp, nil, ZP, SoverD);
-		gendrawdiff(d, dr, top, t, sp, nil, ZP, SoverD);
-		for(dr.min.x++; ++a.x < f && dr.min.x < r.max.x; dr.min.x++){
-			dr.max.x = dr.min.x+1;
-			gendrawdiff(d, dr, top, d, Pt(dr.min.x-1, dr.min.y), nil, ZP, SoverD);
-		}
-		a.x = 0;
-	}
-	freeimage(t);
-}
-
 Point
 pagesize(Page *p)
 {
-	return p->image != nil ? mulpt(subpt(p->image->r.max, p->image->r.min), zoom) : ZP;
+	return p->image != nil ? subpt(p->image->r.max, p->image->r.min) : ZP;
 }
 
 void
@@ -1232,8 +1229,9 @@ drawpage(Page *p)
 	Image *i;
 
 	if((i = p->image) != nil){
-		r = rectaddpt(Rpt(ZP, pagesize(p)), addpt(pos, screen->r.min));
-		zoomdraw(screen, r, ZR, display->white, i, i->r.min, zoom);
+		r = xformrect(Rpt(ZP, pagesize(p)), warpmat);
+		if(rectclip(&r, screen->r))
+			affinewarp(screen, r, i, i->r.min, &warp, 0);
 	} else {
 		r = Rpt(ZP, stringsize(font, p->name));
 		r = rectaddpt(r, addpt(subpt(divpt(subpt(screen->r.max, screen->r.min), 2),
@@ -1247,21 +1245,18 @@ drawpage(Page *p)
 void
 translate(Page *p, Point d)
 {
-	Rectangle r, nr;
+	Rectangle r;
 	Image *i;
 
 	i = p->image;
 	if(i==nil || d.x==0 && d.y==0)
 		return;
-	r = rectaddpt(Rpt(ZP, pagesize(p)), addpt(pos, screen->r.min));
-	pos = addpt(pos, d);
-	nr = rectaddpt(r, d);
+	translatem(warpmat, d.x, d.y);
+	warp = mkwarp(warpmat);
+	r = xformrect(Rpt(ZP, pagesize(p)), warpmat);
 	if(rectclip(&r, screen->r))
-		draw(screen, rectaddpt(r, d), screen, nil, r.min);
-	else
-		r = ZR;
-	zoomdraw(screen, nr, rectaddpt(r, d), display->white, i, i->r.min, zoom);
-	drawframe(nr);
+		affinewarp(screen, r, i, i->r.min, &warp, 0);
+	drawframe(r);
 }
 
 int
@@ -1501,9 +1496,14 @@ void
 eresized(int new)
 {
 	Page *p;
+	Point dp;
 
+	dp = screen->r.min;
 	if(new && getwindow(display, Refnone) == -1)
 		sysfatal("getwindow: %r");
+	dp = subpt(screen->r.min, dp);
+	translatem(warpmat, dp.x, dp.y);
+	warp = mkwarp(warpmat);
 	draw(screen, screen->r, cols[Cground], nil, ZP);
 	if((p = current) != nil){
 		if(canqlock(p)){
@@ -1539,14 +1539,13 @@ void
 docmd(int i, Mouse *m)
 {
 	char buf[NPATH], *s;
-	Point o;
 	int fd, del;
 	Page *p;
 
 	del = 0;
 	switch(i){
 	case Corigsize:
-		pos = ZP;
+		resetwarp();
 		zoom = 1;
 		resize = ZP;
 		rotate = 0;
@@ -1562,13 +1561,13 @@ docmd(int i, Mouse *m)
 		rotate %= 360;
 		goto Unload;
 	case Cfitwidth:
-		pos = ZP;
+		resetwarp();
 		zoom = 1;
 		resize = subpt(screen->r.max, screen->r.min);
 		resize.y = 0;
 		goto Unload;
 	case Cfitheight:
-		pos = ZP;
+		resetwarp();
 		zoom = 1;
 		resize = subpt(screen->r.max, screen->r.min);
 		resize.x = 0;
@@ -1580,16 +1579,21 @@ docmd(int i, Mouse *m)
 	case Czoomout:
 		if(current == nil || !canqlock(current))
 			break;
-		o = subpt(m->xy, screen->r.min);
 		if(i == Czoomin){
 			if(zoom < 0x1000){
 				zoom *= 2;
-				pos =  addpt(mulpt(subpt(pos, o), 2), o);
+				translatem(warpmat, -m->xy.x, -m->xy.y);
+				scalem(warpmat, 2, 2);
+				translatem(warpmat, m->xy.x, m->xy.y);
+				warp = mkwarp(warpmat);
 			}
 		}else{
 			if(zoom > 1){
 				zoom /= 2;
-				pos =  addpt(divpt(subpt(pos, o), 2), o);
+				translatem(warpmat, -m->xy.x, -m->xy.y);
+				scalem(warpmat, 0.5, 0.5);
+				translatem(warpmat, m->xy.x, m->xy.y);
+				warp = mkwarp(warpmat);
 			}
 		}
 		drawpage(current);
@@ -1665,11 +1669,12 @@ docmd(int i, Mouse *m)
 void
 scroll(int y)
 {
-	Point z;
+	Point z, pos;
 	Page *p;
 
 	if(current == nil || !canqlock(current))
 		return;
+	pos = subpt(xformpt(ZP, warpmat), screen->r.min);
 	if(y < 0){
 		if(pos.y >= 0){
 			p = prevpage(current);
@@ -1682,8 +1687,10 @@ scroll(int y)
 				}
 				if(z.y == 0)
 					z.y = Dy(screen->r);
-				if(pos.y+z.y > Dy(screen->r))
-					pos.y = Dy(screen->r) - z.y;
+				if(pos.y+z.y > Dy(screen->r)){
+					translatem(warpmat, 0, -pos.y - z.y+Dy(screen->r));
+					warp = mkwarp(warpmat);
+				}
 				forward = -1;
 				showpage(p);
 				return;
@@ -1696,8 +1703,10 @@ scroll(int y)
 			p = nextpage(current);
 			if(p != nil){
 				qunlock(current);
-				if(pos.y < 0)
-					pos.y = 0;
+				if(pos.y < 0){
+					translatem(warpmat, 0, -pos.y);
+					warp = mkwarp(warpmat);
+				}
 				forward = 1;
 				showpage(p);
 				return;
@@ -1780,6 +1789,7 @@ main(int argc, char *argv[])
 	for(i=0; i<nelem(cols); i++)
  		cols[i] = allocimage(display, Rect(0,0,1,1), screen->chan, 1, th[i].c);
 	draw(screen, screen->r, cols[Cground], nil, ZP);
+	resetwarp();
 
 	einit(Ekeyboard|Emouse);
 	eplumb(Eplumb, "image");
