@@ -295,7 +295,7 @@ kbdproc(void *)
 		case 'c':
 			chartorune(&r, buf+1);
 			if(r){
-				e.data1 = runetokey(r);
+				e.data1 = r;
 				e.type = ev_char;
 				D_PostEvent(&e);
 			}
