@@ -46,6 +46,9 @@ enum {
 	)>>2,
 
 	Silence = 0x8000,
+
+	Rdtr = 0x01,
+	Rrts = 0x02,
 };
 
 char *ctrlname[Cnum] = {
@@ -996,6 +999,44 @@ Srv fs = {
 	.write = fswrite,
 };
 
+static int
+m8init(void)
+{
+	int i;
+	uchar enc[] = {0x00, 0xC2, 0x01, 0x00, 0x00, 0x00, 0x08};
+	Ep *e;
+	Dev *de;
+	Usbdev *u;
+
+	/* line state */
+	if(usbcmd(adev, 0x21, 0x22, Rdtr|Rrts, 0, nil, 0) < 0){
+		werrstr("failed to set line state");
+		return -1;
+	}
+	if(usbcmd(adev, 0x21, 0x20, 0, 0, enc, sizeof enc) < 0){
+		werrstr("failed to set line encoding");
+		return -1;
+	}
+	u = adev->usb;
+	for(e=nil, i=0; i<nelem(u->ep); i++){
+		for(e=u->ep[i]; e!=nil; e=e->next)
+			if(e->id == 3)	/* FIXME: see above for detection */
+				break;
+		if(e != nil)
+			break;
+	}
+	if(e == nil){
+		werrstr("could not find endpoint");
+		return -1;
+	}
+	if((de = openep(adev, e)) == nil)
+		return -1;
+	if(devctl(de, "name m8") < 0)
+		return -1;
+	closedev(de);
+	return 0;
+}
+
 void
 usage(void)
 {
@@ -1106,6 +1147,9 @@ main(int argc, char *argv[])
 
 	snprint(buf, sizeof buf, "%d.audio", adev->id);
 	postsharesrv(&fs, nil, "usb", buf);
+
+	if(adev->usb->vid == 0x16c0 && adev->usb->did == 0x048a && m8init() < 0)
+		sysfatal("m8init: %r");
 
 	exits(nil);
 }
