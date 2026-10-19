@@ -211,7 +211,6 @@ struct Display
 	Subfont		*defaultsubfont;
 	Image		*windows;
 	Image		*screenimage;
-	int		_isnewdisplay;
 };
 
 struct Image
@@ -351,10 +350,11 @@ extern int		mousescrollsize(int);
  */
 extern Image*	_allocimage(Image*, Display*, Rectangle, ulong, int, ulong, int, int);
 extern Image*	allocimage(Display*, Rectangle, ulong, int, ulong);
-extern uchar*	bufimage(Display*, int);
+extern int	drawcmd(Display*, char*, ...);
 extern int	bytesperline(Rectangle, int);
 extern void	closedisplay(Display*);
 extern void	drawerror(Display*, char*);
+extern int	_flushimage(Display*);
 extern int	flushimage(Display*, int);
 extern int	freeimage(Image*);
 extern int	_freeimage1(Image*);
@@ -366,14 +366,14 @@ extern int	loadimage(Image*, Rectangle, uchar*, int);
 extern int	cloadimage(Image*, Rectangle, uchar*, int);
 extern int	getwindow(Display*, int);
 extern int	gengetwindow(Display*, char*, Image**, Screen**, int);
-extern Image* readimage(Display*, int, int);
-extern Image* creadimage(Display*, int, int);
+extern Image*	readimage(Display*, int, int);
+extern Image*	creadimage(Display*, int, int);
 extern int	unloadimage(Image*, Rectangle, uchar*, int);
 extern int	wordsperline(Rectangle, int);
 extern int	writeimage(int, Image*, int);
 extern Image*	namedimage(Display*, char*);
 extern int	nameimage(Image*, char*, int);
-extern Image* allocimagemix(Display*, ulong, ulong);
+extern Image*	allocimagemix(Display*, ulong, ulong);
 
 /*
  * Colors
@@ -424,7 +424,7 @@ extern int		rectclip(Rectangle*, Rectangle);
 extern int		ptinrect(Point, Rectangle);
 extern void		replclipr(Image*, int, Rectangle);
 extern int		drawreplxy(int, int, int);	/* used to be drawsetxy */
-extern Point	drawrepl(Rectangle, Point);
+extern Point		drawrepl(Rectangle, Point);
 extern int		rgb2cmap(int, int, int);
 extern int		cmap2rgb(int);
 extern int		cmap2rgba(int);
@@ -484,7 +484,10 @@ extern void	fillarcop(Image*, Point, int, int, Image*, Point, int, int, Drawop);
 extern void	border(Image*, Rectangle, int, Image*, Point);
 extern void	borderop(Image*, Rectangle, int, Image*, Point, Drawop);
 extern Warp	mkwarp(double[3][3]);
-extern void	affinewarp(Image*, Rectangle, Image*, Point, Warp*, int);
+extern void	affinewarp(Image*, Rectangle, Image*, Image*, Point, Warp*, int);
+extern void	affinewarpop(Image*, Rectangle, Image*, Image*, Point, Warp*, int, Drawop);
+extern void	genaffinewarp(Image*, Point, Rectangle, Image*, Point, Image*, Point, Warp*, int);
+extern void	genaffinewarpop(Image*, Point, Rectangle, Image*, Point, Image*, Point, Warp*, int, Drawop);
 
 /*
  * Font management
@@ -529,7 +532,7 @@ extern void	_unlockdisplay(Display*);
 /*
  * Predefined 
  */
-extern	uchar	defontdata[];
+extern	uchar		defontdata[];
 extern	int		sizeofdefont;
 extern	Point		ZP;
 extern	Rectangle	ZR;
@@ -538,11 +541,10 @@ extern	Rectangle	ZR;
  * Set up by initdraw()
  */
 extern	Display	*display;
-extern	Font		*font;
+extern	Font	*font;
 extern	Image	*screen;
 extern	Screen	*_screen;
 extern	int	_cursorfd;
-extern	uchar*	_bufimageop(Display*, int, Drawop);
 
 #define	BGSHORT(p)	((p)[0]|((p)[1]<<8))
 #define	BGLONG(p)	((p)[0]|((p)[1]<<8)|((p)[2]<<16)|((p)[3]<<24))
